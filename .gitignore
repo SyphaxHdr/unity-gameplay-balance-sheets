@@ -1,0 +1,55 @@
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userprefs
+*.csproj
+*.sln
+
+# Unity generated files
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+MemoryCaptures/
+Recordings/
+
+# Unity cache / local settings
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Secrets / environment
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+*.cer
+*.crt
+*.token
+secrets/
+Secrets/
+credentials/
+Credentials/
+
+# Generated exports
+docs/_generated/
+Documentation~/generated/
+
+# Local test presets
+_TestPresets/
