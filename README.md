@@ -1,207 +1,108 @@
 # Gameplay Balance Sheets for Unity
 
-**Gameplay Balance Sheets** is a Unity Editor tool for creating, testing and validating gameplay balancing sheets directly inside Unity.
+## English
 
-The tool works like **tabletop RPG character sheets**, but for gameplay values.
+**Gameplay Balance Sheets** is a Unity Editor tool for creating and using gameplay balancing sheets.
 
-In an RPG, a character sheet stores a character’s stats.
-Here, a balance sheet stores gameplay values that can be applied to a Unity target such as a player prefab, enemy prefab, boss, camera, UI controller or scene object.
+It works like a tabletop RPG character sheet, but for gameplay values.
 
----
+Instead of letting game designers search through technical Unity components, developers can create a clear reference sheet containing useful gameplay parameters such as movement speed, jump height, attack damage, cooldowns, camera values, enemy stats or boss values.
 
-## Core Workflow
+Designers can then duplicate a reference sheet into variants, test different values, apply them in Unity, and validate the best version as the new reference.
 
-```txt
-Developer creates a reference sheet.
-Designer duplicates it into variants.
-Designer tests different gameplay values.
-The team validates the best variant as the new reference.
-```
+### Main Features
 
-Example:
+* Create reference gameplay sheets.
+* Duplicate reference sheets into designer variants.
+* Organize values into sections.
+* Scan Unity targets and expose serialized gameplay fields.
+* Edit test values without directly modifying the reference sheet.
+* Apply a full sheet or selected values to a target.
+* Validate a sheet as the new gameplay reference.
+* English and French editor interface.
 
-```txt
-Target: PFB_Player
+### Installation
 
-Reference Sheet:
-  Player Balance Sheet
-
-Designer Variants:
-  Player Balance Sheet - Test Fast Movement
-  Player Balance Sheet - Test Heavy Combat
-  Player Balance Sheet - Test Short Dash
-```
-
----
-
-## Main Concepts
-
-### Reference Sheet
-
-A **Reference Sheet** is the base sheet created by a developer.
-
-It defines:
-
-* the Unity target
-* the gameplay sections
-* the exposed fields
-* the baseline values
-
-Reference sheets are locked for designers by default.
-
-### Designer Variant
-
-A **Designer Variant** is an editable copy of a reference sheet.
-
-Designers use variants to test different gameplay feelings without modifying the original reference sheet.
-
-### Target
-
-A **Target** is the prefab or scene object affected by a sheet.
-
-Examples:
-
-```txt
-PFB_Player
-PFB_Boss_01
-CameraRig
-EnemySpawner
-UI_CombatHUD
-```
-
----
-
-## Value Columns
-
-| Column     | Meaning                                               |
-| ---------- | ----------------------------------------------------- |
-| `Baseline` | Reference value from the sheet.                       |
-| `Current`  | Value currently written on the Unity target.          |
-| `Test`     | Value prepared in the selected sheet before applying. |
-
----
-
-## Entry States
-
-| State       | Meaning                                             |
-| ----------- | --------------------------------------------------- |
-| `Reference` | Target matches the baseline value.                  |
-| `Pending`   | `Test` is different from `Current`; ready to apply. |
-| `Modified`  | Target uses a value different from the reference.   |
-| `Missing`   | The field no longer exists on the target.           |
-
-Missing fields do not block the rest of the sheet. Valid fields can still be applied.
-
----
-
-## Editor Pages
-
-### Designer
-
-Used by game designers to:
-
-* create variants
-* edit `Test` values
-* apply selected values
-* restore values to the reference
-* delete designer variants
-
-### Sheet Application
-
-Used to compare and validate sheets.
-
-Sheets are displayed as:
-
-```txt
-Target
-  Reference Sheet
-    Designer Variants
-```
-
-The action **Apply As Reference** applies a validated sheet and turns it into the new reference.
-
-### Developer
-
-Used by developers to:
-
-* create reference sheets
-* assign targets
-* create sections
-* scan targets
-* expose serialized fields
-* write parameter descriptions
-
-### Settings
-
-Contains local editor preferences such as language, default folder and display options.
-
-These preferences are stored with Unity `EditorPrefs`, not in Git.
-
----
-
-## Supported Field Types
-
-The scanner supports serialized MonoBehaviour fields of these types:
-
-```txt
-int
-float
-bool
-string
-enum
-```
-
----
-
-## Installation
-
-Use Unity Package Manager:
+In Unity:
 
 ```txt
 Window > Package Manager > Add package from git URL
 ```
 
-Recommended repository URL format:
+Then paste the Git URL:
 
 ```txt
 https://github.com/<owner>/unity-gameplay-balance-sheets.git
 ```
 
+Replace `<owner>` with the GitHub user or organization name.
+
+### Open the Tool
+
+In Unity:
+
+```txt
+Tools > Gameplay Balance Sheets
+```
+
 ---
 
-## Recommended Repository Name
+## Français
 
-Recommended GitHub repository name:
+**Gameplay Balance Sheets** est un outil Unity Editor qui permet de créer et d’utiliser des fiches d’équilibrage gameplay.
+
+L’outil fonctionne comme une fiche de personnage de JDR, mais pour les valeurs gameplay.
+
+Au lieu de laisser les game designers chercher dans les composants techniques Unity, les développeurs peuvent créer une fiche de référence claire contenant les paramètres utiles : vitesse de déplacement, hauteur de saut, dégâts, cooldowns, valeurs caméra, statistiques d’ennemis ou valeurs de boss.
+
+Les designers peuvent ensuite dupliquer une fiche de référence en variantes, tester différentes valeurs, les appliquer dans Unity, puis valider la meilleure version comme nouvelle référence.
+
+### Fonctionnalités principales
+
+* Créer des fiches de référence gameplay.
+* Dupliquer une fiche de référence en variantes GD.
+* Organiser les valeurs par sections.
+* Scanner une cible Unity et exposer les champs gameplay sérialisés.
+* Modifier des valeurs de test sans modifier directement la fiche de référence.
+* Appliquer une fiche complète ou des valeurs sélectionnées à une cible.
+* Valider une fiche comme nouvelle référence gameplay.
+* Interface éditeur en anglais et en français.
+
+### Installation
+
+Dans Unity :
 
 ```txt
-unity-gameplay-balance-sheets
+Window > Package Manager > Add package from git URL
 ```
 
-Unity package name:
+Puis coller l’URL Git :
 
 ```txt
-com.gameplaybalancesheets.unity
+https://github.com/<owner>/unity-gameplay-balance-sheets.git
 ```
 
-Display name:
+Remplacer `<owner>` par le nom du compte GitHub ou de l’organisation.
+
+### Ouvrir l’outil
+
+Dans Unity :
 
 ```txt
-Gameplay Balance Sheets
+Tools > Gameplay Balance Sheets
 ```
 
 ---
 
 ## Documentation
 
-Full user guides are available here:
+More detailed guides are available in:
 
 ```txt
 Documentation~/GameplayBalanceSheets_UserGuide.md
 Documentation~/GameplayBalanceSheets_UserGuide_FR.md
 ```
 
----
-
 ## License
 
-To be defined.
+MIT License.
