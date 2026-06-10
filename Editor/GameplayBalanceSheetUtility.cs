@@ -123,6 +123,71 @@ namespace GameplayBalanceSheets.Editor
             return deleted;
         }
 
+        public static string BrowseAssetsFolder(string currentFolder)
+        {
+            string projectRoot = Directory.GetParent(Application.dataPath)?.FullName;
+
+            if (string.IsNullOrWhiteSpace(projectRoot))
+            {
+                return currentFolder;
+            }
+
+            projectRoot = projectRoot.Replace("\\", "/");
+
+            string initialFolder = Application.dataPath;
+
+            if (!string.IsNullOrWhiteSpace(currentFolder) &&
+                currentFolder.StartsWith("Assets", StringComparison.Ordinal))
+            {
+                string candidate = Path.Combine(projectRoot, currentFolder).Replace("\\", "/");
+
+                if (Directory.Exists(candidate))
+                {
+                    initialFolder = candidate;
+                }
+            }
+
+            string selectedFolder = EditorUtility.OpenFolderPanel(
+                "Choose Balance Sheets Folder",
+                initialFolder,
+                string.Empty
+            );
+
+            if (string.IsNullOrWhiteSpace(selectedFolder))
+            {
+                return currentFolder;
+            }
+
+            selectedFolder = selectedFolder.Replace("\\", "/");
+
+            if (!selectedFolder.StartsWith(projectRoot + "/", StringComparison.Ordinal))
+            {
+                EditorUtility.DisplayDialog(
+                    "Invalid Folder",
+                    "The selected folder must be inside the Unity project.",
+                    "OK"
+                );
+
+                return currentFolder;
+            }
+
+            string assetsPath = selectedFolder.Substring(projectRoot.Length + 1);
+
+            if (!assetsPath.StartsWith("Assets", StringComparison.Ordinal))
+            {
+                EditorUtility.DisplayDialog(
+                    "Invalid Folder",
+                    "The selected folder must be inside the Assets folder.",
+                    "OK"
+                );
+
+                return currentFolder;
+            }
+
+            EnsureFolder(assetsPath);
+            return assetsPath;
+        }
+
         public static List<ScannedBalanceProperty> ScanTarget(GameObject targetRoot)
         {
             List<ScannedBalanceProperty> results = new List<ScannedBalanceProperty>();
@@ -164,6 +229,7 @@ namespace GameplayBalanceSheets.Editor
 
                     string propertyPath = property.propertyPath;
                     string componentAssemblyName = componentType.AssemblyQualifiedName;
+
                     string id = BuildEntryId(
                         componentPath,
                         componentAssemblyName,
@@ -173,6 +239,7 @@ namespace GameplayBalanceSheets.Editor
 
                     ScannedBalanceProperty scannedProperty = new ScannedBalanceProperty
                     {
+                        selected = false,
                         id = id,
                         componentPath = componentPath,
                         componentName = componentType.Name,
@@ -349,6 +416,7 @@ namespace GameplayBalanceSheets.Editor
                 Debug.LogWarning(
                     $"Could not apply value '{entry.testValue}' to '{entry.displayName}'."
                 );
+
                 return false;
             }
 
@@ -367,6 +435,7 @@ namespace GameplayBalanceSheets.Editor
             EditorUtility.SetDirty(sheet);
 
             SaveTarget(sheet.targetRoot);
+
             return true;
         }
 
@@ -538,11 +607,16 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
+            if (sheet.sections == null)
+            {
+                return;
+            }
+
             for (int sectionIndex = 0; sectionIndex < sheet.sections.Count; sectionIndex++)
             {
                 GameplayBalanceSheetSection section = sheet.sections[sectionIndex];
 
-                if (section == null)
+                if (section == null || section.entries == null)
                 {
                     continue;
                 }
@@ -662,7 +736,11 @@ namespace GameplayBalanceSheets.Editor
             switch (property.propertyType)
             {
                 case SerializedPropertyType.Integer:
-                    if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
+                    if (int.TryParse(
+                            value,
+                            NumberStyles.Integer,
+                            CultureInfo.InvariantCulture,
+                            out int intValue))
                     {
                         property.intValue = intValue;
                         return true;
@@ -680,7 +758,11 @@ namespace GameplayBalanceSheets.Editor
                     return false;
 
                 case SerializedPropertyType.Float:
-                    if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float floatValue))
+                    if (float.TryParse(
+                            value,
+                            NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out float floatValue))
                     {
                         property.floatValue = floatValue;
                         return true;
