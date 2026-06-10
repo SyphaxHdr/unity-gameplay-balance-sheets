@@ -2,10 +2,10 @@
   "name": "com.gameplaybalancesheets.unity",
   "version": "0.2.0",
   "displayName": "Gameplay Balance Sheets",
-  "description": "A generic Unity editor tool for creating gameplay balance sheets for game designers.",
+  "description": "A generic Unity Editor tool for creating RPG-style gameplay balance sheets, designer variants, and validation workflows for gameplay tuning.",
   "unity": "2022.3",
   "author": {
-    "name": "Cerdes"
+    "name": "Syphax"
   },
   "keywords": [
     "unity",
@@ -13,10 +13,21 @@
     "game-design",
     "balancing",
     "gameplay",
-    "tools"
+    "tools",
+    "designer",
+    "workflow",
+    "rpg",
+    "variants"
   ],
   "repository": {
-  "type": "git",
-  "url": "https://github.com/SyphaxHdr/unity-gameplay-balance-sheets.git"
-}
+    "type": "git",
+    "url": "https://github.com/<owner>/unity-gameplay-balance-sheets.git"
+  },
+  "homepage": "https://github.com/<owner>/unity-gameplay-balance-sheets",
+  "bugs": {
+    "url": "https://github.com/<owner>/unity-gameplay-balance-sheets/issues"
+  },
+  "documentationUrl": "https://github.com/<owner>/unity-gameplay-balance-sheets/blob/main/Documentation~/GameplayBalanceSheets_UserGuide.md",
+  "changelogUrl": "https://github.com/<owner>/unity-gameplay-balance-sheets/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/<owner>/unity-gameplay-balance-sheets/blob/main/LICENSE.md"
 }
