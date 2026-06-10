@@ -1,6 +1,6 @@
 {
   "name": "com.gameplaybalancesheets.unity",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "displayName": "Gameplay Balance Sheets",
   "description": "A generic Unity editor tool for creating gameplay balance sheets for game designers.",
   "unity": "2022.3",
@@ -14,5 +14,9 @@
     "balancing",
     "gameplay",
     "tools"
-  ]
+  ],
+  "repository": {
+  "type": "git",
+  "url": "https://github.com/<owner>/unity-gameplay-balance-sheets.git"
+}
 }
