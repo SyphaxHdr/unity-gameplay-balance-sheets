@@ -58,7 +58,7 @@ namespace GameplayBalanceSheets.Editor
             }
 
             sheets.Sort((left, right) =>
-                string.Compare(left.sheetTitle, right.sheetTitle, StringComparison.Ordinal)
+                string.Compare(left.DisplayTitle, right.DisplayTitle, StringComparison.Ordinal)
             );
 
             return sheets;
@@ -89,6 +89,8 @@ namespace GameplayBalanceSheets.Editor
             GameplayBalanceSheetProfile sheet =
                 ScriptableObject.CreateInstance<GameplayBalanceSheetProfile>();
 
+            sheet.ConfigureAsReferenceSheet();
+
             AssetDatabase.CreateAsset(sheet, path);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -97,6 +99,65 @@ namespace GameplayBalanceSheets.Editor
             EditorGUIUtility.PingObject(sheet);
 
             return sheet;
+        }
+
+        public static GameplayBalanceSheetProfile DuplicateSheetForDesigner(
+            GameplayBalanceSheetProfile templateSheet,
+            string variantName,
+            string defaultFolder
+        )
+        {
+            if (templateSheet == null)
+            {
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(defaultFolder))
+            {
+                defaultFolder = DefaultSheetsFolder;
+            }
+
+            EnsureFolder(defaultFolder);
+
+            GameplayBalanceSheetProfile sourceSheet =
+                templateSheet.isDesignerVariant && templateSheet.sourceSheet != null
+                    ? templateSheet.sourceSheet
+                    : templateSheet;
+
+            string cleanVariantName = string.IsNullOrWhiteSpace(variantName)
+                ? "New Variant"
+                : variantName.Trim();
+
+            string sourceTitle = string.IsNullOrWhiteSpace(sourceSheet.sheetTitle)
+                ? sourceSheet.name
+                : sourceSheet.sheetTitle;
+
+            string fileName = SanitizeFileName($"{sourceTitle}_{cleanVariantName}");
+            string path = $"{defaultFolder}/{fileName}.asset".Replace("\\", "/");
+            path = AssetDatabase.GenerateUniqueAssetPath(path);
+
+            GameplayBalanceSheetProfile duplicate =
+                ScriptableObject.CreateInstance<GameplayBalanceSheetProfile>();
+
+            duplicate.sheetTitle = sourceSheet.sheetTitle;
+            duplicate.sheetDescription = sourceSheet.sheetDescription;
+            duplicate.targetRoot = sourceSheet.targetRoot;
+            duplicate.lockSourceSheetForDesigner = sourceSheet.lockSourceSheetForDesigner;
+            duplicate.isDesignerVariant = true;
+            duplicate.sourceSheet = sourceSheet;
+            duplicate.variantName = cleanVariantName;
+            duplicate.sections = CloneSections(templateSheet.sections);
+
+            AssetDatabase.CreateAsset(duplicate, path);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            RefreshCurrentValues(duplicate);
+
+            Selection.activeObject = duplicate;
+            EditorGUIUtility.PingObject(duplicate);
+
+            return duplicate;
         }
 
         public static bool DeleteSheet(GameplayBalanceSheetProfile sheet)
@@ -329,7 +390,7 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
-            ForEachEntry(sheet, entry =>
+            sheet.ForEachEntry(entry =>
             {
                 RefreshCurrentValue(sheet, entry);
             });
@@ -439,16 +500,16 @@ namespace GameplayBalanceSheets.Editor
             return true;
         }
 
-        public static void ApplyAllPendingValues(GameplayBalanceSheetProfile sheet)
+        public static void ApplyAllValues(GameplayBalanceSheetProfile sheet)
         {
             if (sheet == null)
             {
                 return;
             }
 
-            ForEachEntry(sheet, entry =>
+            sheet.ForEachEntry(entry =>
             {
-                if (entry.HasPendingTestValue)
+                if (entry != null && !entry.isMissing)
                 {
                     ApplyEntryTestValue(sheet, entry);
                 }
@@ -457,16 +518,16 @@ namespace GameplayBalanceSheets.Editor
             RefreshCurrentValues(sheet);
         }
 
-        public static void ApplySelectedPendingValues(GameplayBalanceSheetProfile sheet)
+        public static void ApplySelectedValues(GameplayBalanceSheetProfile sheet)
         {
             if (sheet == null)
             {
                 return;
             }
 
-            ForEachEntry(sheet, entry =>
+            sheet.ForEachEntry(entry =>
             {
-                if (entry.selected && entry.HasPendingTestValue)
+                if (entry != null && entry.selected && !entry.isMissing)
                 {
                     ApplyEntryTestValue(sheet, entry);
                 }
@@ -485,7 +546,7 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
-            entry.testValue = entry.baselineValue;
+            entry.CopyBaselineToTest();
             ApplyEntryTestValue(sheet, entry);
         }
 
@@ -496,9 +557,12 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
-            ForEachEntry(sheet, entry =>
+            sheet.ForEachEntry(entry =>
             {
-                RevertEntryToBaseline(sheet, entry);
+                if (entry != null && !entry.isMissing)
+                {
+                    RevertEntryToBaseline(sheet, entry);
+                }
             });
 
             RefreshCurrentValues(sheet);
@@ -511,9 +575,9 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
-            ForEachEntry(sheet, entry =>
+            sheet.ForEachEntry(entry =>
             {
-                if (entry.selected)
+                if (entry != null && entry.selected && !entry.isMissing)
                 {
                     RevertEntryToBaseline(sheet, entry);
                 }
@@ -531,17 +595,126 @@ namespace GameplayBalanceSheets.Editor
 
             RefreshCurrentValues(sheet);
 
-            ForEachEntry(sheet, entry =>
+            sheet.ForEachEntry(entry =>
             {
-                if (!entry.isMissing)
+                if (entry != null && !entry.isMissing)
                 {
-                    entry.baselineValue = entry.currentValue;
-                    entry.testValue = entry.currentValue;
+                    entry.SetCurrentAsBaseline();
                 }
             });
 
             EditorUtility.SetDirty(sheet);
             AssetDatabase.SaveAssets();
+        }
+
+        public static bool ApplySheetAsNewReference(GameplayBalanceSheetProfile sheet)
+        {
+            if (sheet == null)
+            {
+                return false;
+            }
+
+            string promotedTitle = sheet.DisplayTitle;
+
+            ApplyAllValues(sheet);
+            RefreshCurrentValues(sheet);
+
+            sheet.ForEachEntry(entry =>
+            {
+                if (entry != null && !entry.isMissing)
+                {
+                    entry.SetCurrentAsBaseline();
+                }
+            });
+
+            if (sheet.isDesignerVariant)
+            {
+                sheet.sheetTitle = promotedTitle;
+                sheet.isDesignerVariant = false;
+                sheet.sourceSheet = null;
+                sheet.variantName = string.Empty;
+                sheet.lockSourceSheetForDesigner = true;
+            }
+
+            EditorUtility.SetDirty(sheet);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            return true;
+        }
+
+        public static GameplayBalanceSheetApplicationState GetApplicationState(
+            GameplayBalanceSheetProfile sheet
+        )
+        {
+            if (sheet == null)
+            {
+                return GameplayBalanceSheetApplicationState.Broken;
+            }
+
+            int validCount = 0;
+            int missingCount = 0;
+            int pendingCount = 0;
+            int modifiedCount = 0;
+            int baselineCount = 0;
+
+            sheet.ForEachEntry(entry =>
+            {
+                if (entry == null)
+                {
+                    return;
+                }
+
+                if (entry.State == GameplayBalanceSheetEntryState.Missing)
+                {
+                    missingCount++;
+                    return;
+                }
+
+                validCount++;
+
+                switch (entry.State)
+                {
+                    case GameplayBalanceSheetEntryState.Pending:
+                        pendingCount++;
+                        break;
+
+                    case GameplayBalanceSheetEntryState.Modified:
+                        modifiedCount++;
+                        break;
+
+                    case GameplayBalanceSheetEntryState.Baseline:
+                        baselineCount++;
+                        break;
+                }
+            });
+
+            if (missingCount > 0)
+            {
+                return GameplayBalanceSheetApplicationState.Broken;
+            }
+
+            if (validCount == 0)
+            {
+                return GameplayBalanceSheetApplicationState.NotApplied;
+            }
+
+            if (baselineCount == validCount)
+            {
+                return GameplayBalanceSheetApplicationState.Reference;
+            }
+
+            if (pendingCount == 0 && modifiedCount > 0)
+            {
+                return GameplayBalanceSheetApplicationState.Modified;
+            }
+
+            if (pendingCount == validCount)
+            {
+                return GameplayBalanceSheetApplicationState.NotApplied;
+            }
+
+            return GameplayBalanceSheetApplicationState.Partial;
         }
 
         public static void PingTarget(GameplayBalanceSheetProfile sheet)
@@ -594,42 +767,6 @@ namespace GameplayBalanceSheets.Editor
             if (!AssetDatabase.IsValidFolder(folderPath))
             {
                 AssetDatabase.CreateFolder(parent, folderName);
-            }
-        }
-
-        private static void ForEachEntry(
-            GameplayBalanceSheetProfile sheet,
-            Action<GameplayBalanceSheetEntry> action
-        )
-        {
-            if (sheet == null || action == null)
-            {
-                return;
-            }
-
-            if (sheet.sections == null)
-            {
-                return;
-            }
-
-            for (int sectionIndex = 0; sectionIndex < sheet.sections.Count; sectionIndex++)
-            {
-                GameplayBalanceSheetSection section = sheet.sections[sectionIndex];
-
-                if (section == null || section.entries == null)
-                {
-                    continue;
-                }
-
-                for (int entryIndex = 0; entryIndex < section.entries.Count; entryIndex++)
-                {
-                    GameplayBalanceSheetEntry entry = section.entries[entryIndex];
-
-                    if (entry != null)
-                    {
-                        action(entry);
-                    }
-                }
             }
         }
 
@@ -939,6 +1076,104 @@ namespace GameplayBalanceSheets.Editor
 
             entry.isMissing = true;
             entry.currentValue = "Missing";
+        }
+
+        private static List<GameplayBalanceSheetSection> CloneSections(
+            List<GameplayBalanceSheetSection> sourceSections
+        )
+        {
+            List<GameplayBalanceSheetSection> clonedSections = new List<GameplayBalanceSheetSection>();
+
+            if (sourceSections == null)
+            {
+                clonedSections.Add(new GameplayBalanceSheetSection("General"));
+                return clonedSections;
+            }
+
+            for (int sectionIndex = 0; sectionIndex < sourceSections.Count; sectionIndex++)
+            {
+                GameplayBalanceSheetSection sourceSection = sourceSections[sectionIndex];
+
+                if (sourceSection == null)
+                {
+                    continue;
+                }
+
+                GameplayBalanceSheetSection clonedSection = new GameplayBalanceSheetSection
+                {
+                    expanded = sourceSection.expanded,
+                    sectionName = sourceSection.sectionName,
+                    entries = new List<GameplayBalanceSheetEntry>()
+                };
+
+                if (sourceSection.entries != null)
+                {
+                    for (int entryIndex = 0; entryIndex < sourceSection.entries.Count; entryIndex++)
+                    {
+                        GameplayBalanceSheetEntry sourceEntry = sourceSection.entries[entryIndex];
+
+                        if (sourceEntry == null)
+                        {
+                            continue;
+                        }
+
+                        GameplayBalanceSheetEntry clonedEntry = new GameplayBalanceSheetEntry
+                        {
+                            selected = false,
+                            displayName = sourceEntry.displayName,
+                            description = sourceEntry.description,
+
+                            componentPath = sourceEntry.componentPath,
+                            componentName = sourceEntry.componentName,
+                            componentTypeName = sourceEntry.componentTypeName,
+                            componentAssemblyQualifiedTypeName = sourceEntry.componentAssemblyQualifiedTypeName,
+                            componentIndex = sourceEntry.componentIndex,
+                            propertyPath = sourceEntry.propertyPath,
+                            propertyTypeName = sourceEntry.propertyTypeName,
+                            enumNames = new List<string>(sourceEntry.enumNames),
+
+                            baselineValue = sourceEntry.baselineValue,
+                            currentValue = sourceEntry.currentValue,
+                            testValue = sourceEntry.testValue,
+                            isMissing = sourceEntry.isMissing
+                        };
+
+                        clonedSection.entries.Add(clonedEntry);
+                    }
+                }
+
+                clonedSections.Add(clonedSection);
+            }
+
+            if (clonedSections.Count == 0)
+            {
+                clonedSections.Add(new GameplayBalanceSheetSection("General"));
+            }
+
+            return clonedSections;
+        }
+
+        private static string SanitizeFileName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "BalanceSheet";
+            }
+
+            foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            {
+                value = value.Replace(invalidChar.ToString(), string.Empty);
+            }
+
+            value = value.Replace(" ", "_");
+            value = value.Replace("-", "_");
+
+            while (value.Contains("__"))
+            {
+                value = value.Replace("__", "_");
+            }
+
+            return value.Trim('_');
         }
     }
 }

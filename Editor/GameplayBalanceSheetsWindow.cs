@@ -16,13 +16,15 @@ namespace GameplayBalanceSheets.Editor
         private const string ShowHelpBoxesPrefKey = "GameplayBalanceSheets.ShowHelpBoxes";
         private const string ShowEntryDescriptionsPrefKey = "GameplayBalanceSheets.ShowEntryDescriptions";
         private const string ShowDetailedSidebarPrefKey = "GameplayBalanceSheets.ShowDetailedSidebar";
+        private const string AllowReferenceEditingPrefKey = "GameplayBalanceSheets.AllowReferenceEditing";
 
-        private const float SidebarWidth = 360f;
+        private const float SidebarWidth = 380f;
         private const float DevSheetConfigHeight = 330f;
 
         private enum MainPage
         {
             Designer,
+            Application,
             Developer,
             Tutorial,
             Settings
@@ -47,18 +49,24 @@ namespace GameplayBalanceSheets.Editor
         private Vector2 scanScroll;
         private Vector2 tutorialScroll;
         private Vector2 settingsScroll;
+        private Vector2 applicationScroll;
 
         private string sheetSearchText = string.Empty;
         private string scanSearchText = string.Empty;
+        private string newSectionName = "New Section";
+        private string duplicateVariantName = "Test Fast Movement";
+        private string defaultSheetsFolder = GameplayBalanceSheetUtility.DefaultSheetsFolder;
 
         private int selectedSectionIndex;
-        private string newSectionName = "New Section";
-        private string defaultSheetsFolder = GameplayBalanceSheetUtility.DefaultSheetsFolder;
 
         private bool showTechnicalInfo;
         private bool showHelpBoxes = true;
         private bool showEntryDescriptions = true;
         private bool showDetailedSidebar = true;
+        private bool allowReferenceSheetEditing;
+
+        private readonly Dictionary<string, bool> applicationTargetFoldouts = new Dictionary<string, bool>();
+        private readonly Dictionary<string, bool> applicationReferenceFoldouts = new Dictionary<string, bool>();
 
         private SerializedObject sectionSerializedObject;
         private ReorderableList sectionReorderableList;
@@ -78,26 +86,19 @@ namespace GameplayBalanceSheets.Editor
         {
             GameplayBalanceSheetsWindow window = GetWindow<GameplayBalanceSheetsWindow>();
             window.titleContent = new GUIContent("Balance Sheets");
-            window.minSize = new Vector2(1280f, 760f);
+            window.minSize = new Vector2(1320f, 780f);
             window.Show();
         }
 
         private void OnEnable()
         {
-            language = (PluginLanguage)EditorPrefs.GetInt(
-                LanguagePrefKey,
-                (int)PluginLanguage.English
-            );
-
-            defaultSheetsFolder = EditorPrefs.GetString(
-                SheetsFolderPrefKey,
-                GameplayBalanceSheetUtility.DefaultSheetsFolder
-            );
-
+            language = (PluginLanguage)EditorPrefs.GetInt(LanguagePrefKey, (int)PluginLanguage.English);
+            defaultSheetsFolder = EditorPrefs.GetString(SheetsFolderPrefKey, GameplayBalanceSheetUtility.DefaultSheetsFolder);
             showTechnicalInfo = EditorPrefs.GetBool(ShowTechnicalInfoPrefKey, false);
             showHelpBoxes = EditorPrefs.GetBool(ShowHelpBoxesPrefKey, true);
             showEntryDescriptions = EditorPrefs.GetBool(ShowEntryDescriptionsPrefKey, true);
             showDetailedSidebar = EditorPrefs.GetBool(ShowDetailedSidebarPrefKey, true);
+            allowReferenceSheetEditing = EditorPrefs.GetBool(AllowReferenceEditingPrefKey, false);
 
             RefreshSheets();
         }
@@ -116,6 +117,12 @@ namespace GameplayBalanceSheets.Editor
             if (currentPage == MainPage.Settings)
             {
                 DrawSettingsPage();
+                return;
+            }
+
+            if (currentPage == MainPage.Application)
+            {
+                DrawApplicationPage();
                 return;
             }
 
@@ -146,7 +153,6 @@ namespace GameplayBalanceSheets.Editor
             }
 
             EditorGUILayout.EndVertical();
-
             EditorGUILayout.EndHorizontal();
         }
 
@@ -212,11 +218,12 @@ namespace GameplayBalanceSheets.Editor
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
-            GUILayout.Label("Gameplay Balance Sheets", EditorStyles.boldLabel, GUILayout.Width(230f));
+            GUILayout.Label("Gameplay Balance Sheets", EditorStyles.boldLabel, GUILayout.Width(220f));
 
             string[] tabs =
             {
                 T("Designer", "Équilibrage GD"),
+                T("Sheet Application", "Application des fiches"),
                 T("Developer", "Configuration Dev"),
                 T("Tutorial", "Tutoriel"),
                 T("Settings", "Paramètres")
@@ -226,7 +233,7 @@ namespace GameplayBalanceSheets.Editor
                 (int)currentPage,
                 tabs,
                 EditorStyles.toolbarButton,
-                GUILayout.Width(560f)
+                GUILayout.Width(760f)
             );
 
             GUILayout.FlexibleSpace();
@@ -255,7 +262,7 @@ namespace GameplayBalanceSheets.Editor
         {
             EditorGUILayout.BeginVertical(GUILayout.Width(SidebarWidth));
 
-            DrawSheetListPanel(
+            DrawSheetTreePanel(
                 T("Balance Sheets", "Fiches d’équilibrage"),
                 false
             );
@@ -267,7 +274,7 @@ namespace GameplayBalanceSheets.Editor
         {
             EditorGUILayout.BeginVertical(GUILayout.Width(SidebarWidth));
 
-            DrawSheetListPanel(
+            DrawSheetTreePanel(
                 T("Sheet Instances", "Instances de fiches"),
                 true
             );
@@ -277,7 +284,7 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.EndVertical();
         }
 
-        private void DrawSheetListPanel(string title, bool developerMode)
+        private void DrawSheetTreePanel(string title, bool developerMode)
         {
             EditorGUILayout.BeginVertical("box", GUILayout.ExpandHeight(true));
 
@@ -295,31 +302,66 @@ namespace GameplayBalanceSheets.Editor
 
             EditorGUILayout.EndHorizontal();
 
+            if (developerMode)
+            {
+                EditorGUILayout.Space(4f);
+
+                if (DrawColoredButton(
+                        T("Create Reference Sheet", "Créer fiche de référence"),
+                        new Color(0.35f, 0.7f, 1f),
+                        GUILayout.Height(30f)))
+                {
+                    CreateSheet();
+                }
+            }
+
+            EditorGUILayout.Space(4f);
+
             sidebarScroll = EditorGUILayout.BeginScrollView(sidebarScroll);
 
-            for (int i = 0; i < sheets.Count; i++)
+            List<GameplayBalanceSheetProfile> references = GetReferenceSheets();
+
+            for (int i = 0; i < references.Count; i++)
             {
-                GameplayBalanceSheetProfile sheet = sheets[i];
+                GameplayBalanceSheetProfile referenceSheet = references[i];
 
-                if (sheet == null)
+                if (referenceSheet == null)
                 {
                     continue;
                 }
 
-                if (!MatchesSheetSearch(sheet))
+                if (!ShouldShowReferenceGroup(referenceSheet))
                 {
                     continue;
                 }
 
-                DrawSheetCard(sheet, developerMode);
+                DrawReferenceSheetCard(referenceSheet);
+
+                List<GameplayBalanceSheetProfile> variants = GetVariantsForReference(referenceSheet);
+
+                for (int variantIndex = 0; variantIndex < variants.Count; variantIndex++)
+                {
+                    GameplayBalanceSheetProfile variant = variants[variantIndex];
+
+                    if (variant == null || !MatchesSheetSearch(variant))
+                    {
+                        continue;
+                    }
+
+                    DrawVariantSheetCard(variant);
+                }
+
+                EditorGUILayout.Space(6f);
             }
+
+            DrawOrphanVariants();
 
             EditorGUILayout.EndScrollView();
 
             EditorGUILayout.EndVertical();
         }
 
-        private void DrawSheetCard(GameplayBalanceSheetProfile sheet, bool developerMode)
+        private void DrawReferenceSheetCard(GameplayBalanceSheetProfile sheet)
         {
             SheetStats stats = GetSheetStats(sheet);
 
@@ -334,18 +376,16 @@ namespace GameplayBalanceSheets.Editor
 
             GUI.backgroundColor = previousColor;
 
-            string title = string.IsNullOrWhiteSpace(sheet.sheetTitle)
-                ? sheet.name
-                : sheet.sheetTitle;
-
-            if (GUILayout.Button(title, cardTitleStyle, GUILayout.Height(26f)))
+            if (GUILayout.Button(sheet.DisplayTitle, cardTitleStyle, GUILayout.Height(30f)))
             {
-                selectedSheet = sheet;
-                selectedSectionIndex = 0;
-                scannedProperties.Clear();
-                ResetSectionReorderList();
-                GUI.FocusControl(null);
+                SelectSheet(sheet);
             }
+
+            DrawInlineInfo(
+                T("Type", "Type"),
+                T("Reference Sheet", "Fiche de référence"),
+                new Color(0.3f, 0.85f, 0.45f)
+            );
 
             string targetName = sheet.targetRoot != null
                 ? sheet.targetRoot.name
@@ -362,23 +402,93 @@ namespace GameplayBalanceSheets.Editor
                 EditorGUILayout.BeginHorizontal();
 
                 DrawSmallStat(T("Pending", "Test"), stats.pending, new Color(0.35f, 0.65f, 1f));
-                DrawSmallStat(T("Changed", "Modifié"), stats.changed, new Color(1f, 0.65f, 0.25f));
+                DrawSmallStat(T("Modified", "Modifié"), stats.modified, new Color(0.6f, 0.45f, 1f));
                 DrawSmallStat(T("Missing", "Introuvable"), stats.missing, new Color(1f, 0.35f, 0.35f));
 
                 EditorGUILayout.EndHorizontal();
             }
 
-            if (developerMode && showTechnicalInfo)
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawVariantSheetCard(GameplayBalanceSheetProfile sheet)
+        {
+            SheetStats stats = GetSheetStats(sheet);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(22f);
+
+            Color previousColor = GUI.backgroundColor;
+
+            if (sheet == selectedSheet)
             {
-                EditorGUILayout.LabelField(
-                    AssetDatabase.GetAssetPath(sheet),
-                    EditorStyles.miniLabel
-                );
+                GUI.backgroundColor = new Color(0.55f, 0.75f, 1f);
+            }
+
+            EditorGUILayout.BeginVertical("box");
+
+            GUI.backgroundColor = previousColor;
+
+            if (GUILayout.Button("↳ " + sheet.VariantSuffix, EditorStyles.miniButton, GUILayout.Height(26f)))
+            {
+                SelectSheet(sheet);
+            }
+
+            DrawInlineInfo(
+                T("Type", "Type"),
+                T("Designer Variant", "Variante GD"),
+                new Color(0.35f, 0.65f, 1f)
+            );
+
+            if (showDetailedSidebar)
+            {
+                EditorGUILayout.BeginHorizontal();
+
+                DrawSmallStat(T("Pending", "Test"), stats.pending, new Color(0.35f, 0.65f, 1f));
+                DrawSmallStat(T("Modified", "Modifié"), stats.modified, new Color(0.6f, 0.45f, 1f));
+                DrawSmallStat(T("Missing", "Introuvable"), stats.missing, new Color(1f, 0.35f, 0.35f));
+
+                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUILayout.EndVertical();
 
-            EditorGUILayout.Space(3f);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawOrphanVariants()
+        {
+            List<GameplayBalanceSheetProfile> orphans = new List<GameplayBalanceSheetProfile>();
+
+            for (int i = 0; i < sheets.Count; i++)
+            {
+                GameplayBalanceSheetProfile sheet = sheets[i];
+
+                if (sheet == null || !sheet.isDesignerVariant || sheet.sourceSheet != null)
+                {
+                    continue;
+                }
+
+                if (!MatchesSheetSearch(sheet))
+                {
+                    continue;
+                }
+
+                orphans.Add(sheet);
+            }
+
+            if (orphans.Count == 0)
+            {
+                return;
+            }
+
+            EditorGUILayout.Space(8f);
+            DrawColoredLabel(T("Orphan Variants", "Variantes sans référence"), new Color(1f, 0.65f, 0.25f), true);
+
+            for (int i = 0; i < orphans.Count; i++)
+            {
+                DrawVariantSheetCard(orphans[i]);
+            }
         }
 
         private void DrawDeveloperSheetConfigurationPanel()
@@ -392,44 +502,16 @@ namespace GameplayBalanceSheets.Editor
 
             DrawInfoBox(
                 T(
-                    "Create or delete balance sheets here. Select a sheet above before editing or deleting it.",
-                    "Crée ou supprime les fiches ici. Sélectionne une fiche au-dessus avant de la modifier ou de la supprimer."
+                    "Create reference sheets here. Designer variants are created from the Designer page.",
+                    "Crée ici les fiches de référence. Les variantes GD sont créées depuis la page Équilibrage GD."
                 ),
                 MessageType.Info
             );
 
-            EditorGUILayout.BeginHorizontal();
-
-            if (DrawColoredButton(
-                    T("Create Sheet", "Créer fiche"),
-                    new Color(0.35f, 0.7f, 1f),
-                    GUILayout.Height(28f)))
-            {
-                CreateSheet();
-            }
-
-            using (new EditorGUI.DisabledScope(selectedSheet == null))
-            {
-                if (DrawColoredButton(
-                        T("Delete Sheet", "Supprimer fiche"),
-                        new Color(1f, 0.45f, 0.35f),
-                        GUILayout.Height(28f)))
-                {
-                    ConfirmAndDeleteSheet();
-                }
-            }
-
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.Space(6f);
-
             if (selectedSheet == null)
             {
                 EditorGUILayout.HelpBox(
-                    T(
-                        "No sheet selected.",
-                        "Aucune fiche sélectionnée."
-                    ),
+                    T("No sheet selected.", "Aucune fiche sélectionnée."),
                     MessageType.Warning
                 );
 
@@ -439,23 +521,54 @@ namespace GameplayBalanceSheets.Editor
 
             EditorGUI.BeginChangeCheck();
 
-            selectedSheet.sheetTitle = EditorGUILayout.TextField(
-                T("Title", "Titre"),
-                selectedSheet.sheetTitle
-            );
+            using (new EditorGUI.DisabledScope(selectedSheet.isDesignerVariant))
+            {
+                selectedSheet.sheetTitle = EditorGUILayout.TextField(
+                    T("Reference Title", "Titre de référence"),
+                    selectedSheet.sheetTitle
+                );
 
-            selectedSheet.targetRoot = (GameObject)EditorGUILayout.ObjectField(
-                T("Target Root", "Cible"),
-                selectedSheet.targetRoot,
-                typeof(GameObject),
-                true
+                selectedSheet.targetRoot = (GameObject)EditorGUILayout.ObjectField(
+                    T("Target Root", "Cible"),
+                    selectedSheet.targetRoot,
+                    typeof(GameObject),
+                    true
+                );
+            }
+
+            if (selectedSheet.isDesignerVariant)
+            {
+                EditorGUILayout.LabelField(
+                    T("Variant Name", "Nom de variante"),
+                    selectedSheet.variantName
+                );
+
+                DrawInfoBox(
+                    T(
+                        "This is a designer variant. Its structure comes from its reference sheet. Edit gameplay values from the Designer page.",
+                        "Ceci est une variante GD. Sa structure vient de sa fiche de référence. Les valeurs gameplay se modifient depuis la page Équilibrage GD."
+                    ),
+                    MessageType.Info
+                );
+            }
+
+            selectedSheet.lockSourceSheetForDesigner = EditorGUILayout.ToggleLeft(
+                T(
+                    "Lock reference sheet for designers",
+                    "Verrouiller la fiche de référence pour les GD"
+                ),
+                selectedSheet.lockSourceSheetForDesigner
             );
 
             EditorGUILayout.LabelField(T("Description", "Description"));
-            selectedSheet.sheetDescription = EditorGUILayout.TextArea(
-                selectedSheet.sheetDescription,
-                GUILayout.Height(55f)
-            );
+
+            using (new EditorGUI.DisabledScope(selectedSheet.isDesignerVariant))
+            {
+                selectedSheet.sheetDescription = EditorGUILayout.TextArea(
+                    selectedSheet.sheetDescription,
+                    GUILayout.Height(55f)
+                );
+            }
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -465,11 +578,11 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.Space(4f);
 
             if (DrawColoredButton(
-                    T("Save Sheet", "Sauvegarder fiche"),
-                    new Color(0.75f, 0.75f, 0.75f),
+                    T("Delete Sheet", "Supprimer fiche"),
+                    new Color(1f, 0.45f, 0.35f),
                     GUILayout.Height(28f)))
             {
-                GameplayBalanceSheetUtility.SaveSheet(selectedSheet);
+                ConfirmAndDeleteSheet(false);
             }
 
             EditorGUILayout.EndVertical();
@@ -500,7 +613,18 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.BeginHorizontal();
 
             EditorGUILayout.BeginVertical();
-            EditorGUILayout.LabelField(selectedSheet.sheetTitle, titleStyle);
+
+            EditorGUILayout.LabelField(selectedSheet.DisplayTitle, titleStyle);
+
+            DrawColoredLabel(
+                selectedSheet.isDesignerVariant
+                    ? T("Designer Variant", "Variante GD")
+                    : T("Reference Sheet", "Fiche de référence"),
+                selectedSheet.isDesignerVariant
+                    ? new Color(0.35f, 0.65f, 1f)
+                    : new Color(0.3f, 0.85f, 0.45f),
+                true
+            );
 
             if (selectedSheet.targetRoot != null)
             {
@@ -519,6 +643,31 @@ namespace GameplayBalanceSheets.Editor
                 );
             }
 
+            if (selectedSheet.isDesignerVariant)
+            {
+                EditorGUI.BeginChangeCheck();
+
+                selectedSheet.variantName = EditorGUILayout.TextField(
+                    T("Variant suffix", "Suffixe de variante"),
+                    selectedSheet.variantName
+                );
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    EditorUtility.SetDirty(selectedSheet);
+                }
+            }
+            else if (!CanDesignerEditSelectedSheet())
+            {
+                DrawInfoBox(
+                    T(
+                        "This reference sheet is locked for designers. Duplicate it to create an editable variant.",
+                        "Cette fiche de référence est verrouillée pour les GD. Duplique-la pour créer une variante modifiable."
+                    ),
+                    MessageType.Info
+                );
+            }
+
             if (!string.IsNullOrWhiteSpace(selectedSheet.sheetDescription))
             {
                 EditorGUILayout.LabelField(selectedSheet.sheetDescription, descriptionStyle);
@@ -528,12 +677,45 @@ namespace GameplayBalanceSheets.Editor
 
             GUILayout.FlexibleSpace();
 
-            EditorGUILayout.BeginVertical(GUILayout.Width(520f));
+            EditorGUILayout.BeginVertical(GUILayout.Width(590f));
+
+            EditorGUILayout.BeginHorizontal();
+
+            duplicateVariantName = EditorGUILayout.TextField(
+                duplicateVariantName,
+                GUILayout.Height(28f),
+                GUILayout.MinWidth(230f)
+            );
+
+            if (DrawColoredButton(
+                    T("Create Variant", "Créer une variante"),
+                    new Color(0.35f, 0.7f, 1f),
+                    GUILayout.Width(170f),
+                    GUILayout.Height(28f)))
+            {
+                DuplicateSelectedSheetForDesigner();
+            }
+
+            using (new EditorGUI.DisabledScope(!selectedSheet.isDesignerVariant))
+            {
+                if (DrawColoredButton(
+                        T("Delete Variant", "Supprimer variante"),
+                        new Color(1f, 0.45f, 0.35f),
+                        GUILayout.Width(155f),
+                        GUILayout.Height(28f)))
+                {
+                    ConfirmAndDeleteSheet(true);
+                }
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4f);
 
             EditorGUILayout.BeginHorizontal();
 
             if (DrawColoredButton(
-                    T("Refresh Values", "Actualiser valeurs"),
+                    T("Refresh Current", "Actualiser Current"),
                     new Color(0.55f, 0.75f, 1f),
                     GUILayout.Height(30f)))
             {
@@ -541,15 +723,15 @@ namespace GameplayBalanceSheets.Editor
             }
 
             if (DrawColoredButton(
-                    T("Apply All Tests", "Appliquer tous les tests"),
+                    T("Apply Whole Sheet", "Appliquer toute la fiche"),
                     new Color(0.35f, 0.85f, 0.45f),
                     GUILayout.Height(30f)))
             {
-                GameplayBalanceSheetUtility.ApplyAllPendingValues(selectedSheet);
+                GameplayBalanceSheetUtility.ApplyAllValues(selectedSheet);
             }
 
             if (DrawColoredButton(
-                    T("Revert All", "Tout réinitialiser"),
+                    T("Restore Reference", "Restaurer la référence"),
                     new Color(1f, 0.65f, 0.25f),
                     GUILayout.Height(30f)))
             {
@@ -589,33 +771,41 @@ namespace GameplayBalanceSheets.Editor
                 subtitleStyle
             );
 
-            EditorGUILayout.BeginHorizontal();
-
             DrawStatusExplanation(
-                "OK",
-                T("Current equals baseline.", "Current est identique à la baseline."),
+                T("Reference", "Référence"),
+                T(
+                    "The target currently matches the reference value.",
+                    "La cible correspond actuellement à la valeur de référence."
+                ),
                 new Color(0.3f, 0.85f, 0.45f)
             );
 
             DrawStatusExplanation(
                 T("Pending", "Test en attente"),
-                T("Test differs from Current and is ready to apply.", "Test est différent de Current et peut être appliqué."),
+                T(
+                    "Test is different from Current. The value is ready to be applied.",
+                    "Test est différent de Current. La valeur est prête à être appliquée."
+                ),
                 new Color(0.35f, 0.65f, 1f)
             );
 
             DrawStatusExplanation(
-                T("Changed", "Modifié"),
-                T("Current differs from baseline.", "Current est différent de la baseline."),
-                new Color(1f, 0.65f, 0.25f)
+                T("Modified", "Modifié"),
+                T(
+                    "The target uses a value different from the reference.",
+                    "La cible utilise une valeur différente de la référence."
+                ),
+                new Color(0.6f, 0.45f, 1f)
             );
 
             DrawStatusExplanation(
                 T("Missing", "Introuvable"),
-                T("The field or target cannot be found.", "Le champ ou la cible est introuvable."),
+                T(
+                    "The field no longer exists. Other valid fields can still be applied.",
+                    "Le champ n’existe plus. Les autres champs valides peuvent quand même être appliqués."
+                ),
                 new Color(1f, 0.35f, 0.35f)
             );
-
-            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.EndVertical();
         }
@@ -654,12 +844,12 @@ namespace GameplayBalanceSheets.Editor
 
             GUILayout.FlexibleSpace();
 
-            if (GUILayout.Button(T("Select Section", "Sélectionner section"), GUILayout.Width(130f)))
+            if (GUILayout.Button(T("Select", "Sélectionner"), GUILayout.Width(95f)))
             {
                 SetSectionEntriesSelected(section, true);
             }
 
-            if (GUILayout.Button(T("Clear Section", "Vider section"), GUILayout.Width(110f)))
+            if (GUILayout.Button(T("Clear", "Désélectionner"), GUILayout.Width(120f)))
             {
                 SetSectionEntriesSelected(section, false);
             }
@@ -672,10 +862,29 @@ namespace GameplayBalanceSheets.Editor
                 ApplySelectedInSection(section);
             }
 
+            using (new EditorGUI.DisabledScope(!CanDesignerEditSelectedSheet()))
+            {
+                if (DrawColoredButton(
+                        "Current → Test",
+                        new Color(0.55f, 0.75f, 1f),
+                        GUILayout.Width(120f)))
+                {
+                    CopyCurrentToTestInSection(section);
+                }
+
+                if (DrawColoredButton(
+                        "Baseline → Test",
+                        new Color(0.55f, 0.75f, 1f),
+                        GUILayout.Width(125f)))
+                {
+                    CopyBaselineToTestInSection(section);
+                }
+            }
+
             if (DrawColoredButton(
-                    T("Revert Selected", "Réinitialiser sélection"),
+                    T("Restore Selected", "Restaurer sélection"),
                     new Color(1f, 0.65f, 0.25f),
-                    GUILayout.Width(160f)))
+                    GUILayout.Width(135f)))
             {
                 RevertSelectedInSection(section);
             }
@@ -727,21 +936,25 @@ namespace GameplayBalanceSheets.Editor
 
             entry.selected = EditorGUILayout.Toggle(entry.selected, GUILayout.Width(22f));
 
-            EditorGUILayout.LabelField(entry.displayName, compactBoldLabelStyle, GUILayout.MinWidth(180f));
+            EditorGUILayout.LabelField(entry.displayName, compactBoldLabelStyle, GUILayout.MinWidth(190f));
 
-            DrawValueCell("Baseline", entry.baselineValue, 140f);
-            DrawValueCell("Current", entry.currentValue, 140f);
+            DrawValueCell("Baseline", entry.baselineValue, 145f);
+            DrawValueCell("Current", entry.currentValue, 145f);
 
             EditorGUILayout.LabelField("Test", compactBoldLabelStyle, GUILayout.Width(35f));
-            string newTestValue = DrawValueField(entry, entry.testValue, 120f);
 
-            if (newTestValue != entry.testValue)
+            using (new EditorGUI.DisabledScope(!CanDesignerEditSelectedSheet()))
             {
-                entry.testValue = newTestValue;
-                EditorUtility.SetDirty(selectedSheet);
+                string newTestValue = DrawValueField(entry, entry.testValue, 130f);
+
+                if (newTestValue != entry.testValue)
+                {
+                    entry.testValue = newTestValue;
+                    EditorUtility.SetDirty(selectedSheet);
+                }
             }
 
-            DrawStateBadge(entry, 135f);
+            DrawStateBadge(entry, 140f);
 
             EditorGUILayout.EndHorizontal();
 
@@ -758,34 +971,6 @@ namespace GameplayBalanceSheets.Editor
                     EditorStyles.miniLabel
                 );
             }
-
-            EditorGUILayout.BeginHorizontal();
-
-            GUILayout.FlexibleSpace();
-
-            if (GUILayout.Button(T("Apply", "Appliquer"), GUILayout.Width(95f)))
-            {
-                GameplayBalanceSheetUtility.ApplyEntryTestValue(selectedSheet, entry);
-            }
-
-            if (GUILayout.Button(T("Revert Baseline", "Revenir baseline"), GUILayout.Width(130f)))
-            {
-                GameplayBalanceSheetUtility.RevertEntryToBaseline(selectedSheet, entry);
-            }
-
-            if (GUILayout.Button("Current → Test", GUILayout.Width(120f)))
-            {
-                entry.testValue = entry.currentValue;
-                EditorUtility.SetDirty(selectedSheet);
-            }
-
-            if (GUILayout.Button("Baseline → Test", GUILayout.Width(125f)))
-            {
-                entry.testValue = entry.baselineValue;
-                EditorUtility.SetDirty(selectedSheet);
-            }
-
-            EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.EndVertical();
         }
@@ -1086,9 +1271,9 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.BeginHorizontal();
 
             entry.selected = EditorGUILayout.Toggle(entry.selected, GUILayout.Width(22f));
-            entry.displayName = EditorGUILayout.TextField(entry.displayName, compactBoldLabelStyle, GUILayout.MinWidth(180f));
+            entry.displayName = EditorGUILayout.TextField(entry.displayName, compactBoldLabelStyle, GUILayout.MinWidth(200f));
 
-            DrawStateBadge(entry, 130f);
+            DrawStateBadge(entry, 135f);
 
             if (DrawColoredButton(
                     T("Remove", "Supprimer"),
@@ -1110,31 +1295,222 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.LabelField(T("Description", "Description"));
             entry.description = EditorGUILayout.TextArea(entry.description, GUILayout.MinHeight(38f));
 
-            DrawEntryValueRow(entry);
+            EditorGUILayout.EndVertical();
+        }
+
+        // --------------------------------------------------------------------
+        // Application Page
+        // --------------------------------------------------------------------
+
+        private void DrawApplicationPage()
+        {
+            applicationScroll = EditorGUILayout.BeginScrollView(applicationScroll);
+
+            EditorGUILayout.Space(12f);
+
+            EditorGUILayout.LabelField(
+                T("Sheet Application", "Application des fiches"),
+                tutorialTitleStyle
+            );
+
+            DrawInfoBox(
+                T(
+                    "This page is organized as Target > Reference Sheet > Designer Variants. Applying a sheet here promotes it as the new reference.",
+                    "Cette page est organisée ainsi : Cible > Fiche de référence > Variantes GD. Appliquer une fiche ici la transforme en nouvelle référence."
+                ),
+                MessageType.Warning
+            );
+
+            List<TargetGroup> targetGroups = BuildTargetGroups();
+
+            if (targetGroups.Count == 0)
+            {
+                DrawInfoBox(
+                    T("No reference sheet found.", "Aucune fiche de référence trouvée."),
+                    MessageType.Info
+                );
+
+                EditorGUILayout.EndScrollView();
+                return;
+            }
+
+            for (int targetIndex = 0; targetIndex < targetGroups.Count; targetIndex++)
+            {
+                TargetGroup group = targetGroups[targetIndex];
+
+                string targetKey = GetTargetKey(group.target, targetIndex);
+                bool targetExpanded = GetFoldout(applicationTargetFoldouts, targetKey, true);
+
+                EditorGUILayout.Space(10f);
+                EditorGUILayout.BeginVertical("box");
+
+                string targetName = group.target != null
+                    ? group.target.name
+                    : T("No Target", "Aucune cible");
+
+                EditorGUILayout.BeginHorizontal();
+
+                targetExpanded = EditorGUILayout.Foldout(
+                    targetExpanded,
+                    "Target: " + targetName,
+                    true,
+                    EditorStyles.foldoutHeader
+                );
+
+                SetFoldout(applicationTargetFoldouts, targetKey, targetExpanded);
+
+                GUILayout.FlexibleSpace();
+
+                EditorGUILayout.LabelField(
+                    T("Reference sheets", "Fiches de référence") + $": {group.references.Count}",
+                    GUILayout.Width(180f)
+                );
+
+                EditorGUILayout.EndHorizontal();
+
+                if (targetExpanded)
+                {
+                    for (int referenceIndex = 0; referenceIndex < group.references.Count; referenceIndex++)
+                    {
+                        GameplayBalanceSheetProfile referenceSheet = group.references[referenceIndex];
+
+                        if (referenceSheet == null)
+                        {
+                            continue;
+                        }
+
+                        DrawApplicationReferenceGroup(referenceSheet);
+                    }
+                }
+
+                EditorGUILayout.EndVertical();
+            }
+
+            EditorGUILayout.Space(20f);
+            EditorGUILayout.EndScrollView();
+        }
+
+        private void DrawApplicationReferenceGroup(GameplayBalanceSheetProfile referenceSheet)
+        {
+            string referenceKey = GetSheetKey(referenceSheet);
+            bool referenceExpanded = GetFoldout(applicationReferenceFoldouts, referenceKey, true);
+
+            EditorGUILayout.Space(6f);
+            EditorGUILayout.BeginVertical("box");
 
             EditorGUILayout.BeginHorizontal();
 
-            if (GUILayout.Button(T("Apply Test", "Appliquer Test"), GUILayout.Width(120f)))
-            {
-                GameplayBalanceSheetUtility.ApplyEntryTestValue(selectedSheet, entry);
-            }
+            referenceExpanded = EditorGUILayout.Foldout(
+                referenceExpanded,
+                referenceSheet.DisplayTitle,
+                true,
+                EditorStyles.foldoutHeader
+            );
 
-            if (GUILayout.Button(T("Revert To Baseline", "Revenir à la baseline"), GUILayout.Width(160f)))
-            {
-                GameplayBalanceSheetUtility.RevertEntryToBaseline(selectedSheet, entry);
-            }
-
-            if (DrawColoredButton(
-                    T("Current As Baseline", "Current devient baseline"),
-                    new Color(1f, 0.65f, 0.25f),
-                    GUILayout.Width(185f)))
-            {
-                entry.baselineValue = entry.currentValue;
-                entry.testValue = entry.currentValue;
-                EditorUtility.SetDirty(selectedSheet);
-            }
+            SetFoldout(applicationReferenceFoldouts, referenceKey, referenceExpanded);
 
             GUILayout.FlexibleSpace();
+
+            List<GameplayBalanceSheetProfile> variants = GetVariantsForReference(referenceSheet);
+
+            EditorGUILayout.LabelField(
+                T("Variants", "Variantes") + $": {variants.Count}",
+                GUILayout.Width(110f)
+            );
+
+            EditorGUILayout.EndHorizontal();
+
+            if (referenceExpanded)
+            {
+                DrawApplicationSheetCard(referenceSheet, true);
+
+                if (variants.Count > 0)
+                {
+                    EditorGUILayout.Space(4f);
+                    EditorGUILayout.BeginVertical("box");
+                    EditorGUILayout.LabelField(T("Designer Variants", "Variantes GD"), compactBoldLabelStyle);
+
+                    for (int variantIndex = 0; variantIndex < variants.Count; variantIndex++)
+                    {
+                        DrawApplicationVariantCard(variants[variantIndex]);
+                    }
+
+                    EditorGUILayout.EndVertical();
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawApplicationVariantCard(GameplayBalanceSheetProfile sheet)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(24f);
+
+            DrawApplicationSheetCard(sheet, false);
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawApplicationSheetCard(GameplayBalanceSheetProfile sheet, bool isReference)
+        {
+            if (sheet == null)
+            {
+                return;
+            }
+
+            GameplayBalanceSheetApplicationState state =
+                GameplayBalanceSheetUtility.GetApplicationState(sheet);
+
+            EditorGUILayout.BeginVertical("box");
+
+            EditorGUILayout.BeginHorizontal();
+
+            EditorGUILayout.LabelField(
+                isReference
+                    ? sheet.DisplayTitle
+                    : "↳ " + sheet.VariantSuffix,
+                cardTitleStyle,
+                GUILayout.MinWidth(260f)
+            );
+
+            DrawApplicationStateBadge(state, 130f);
+
+            EditorGUILayout.LabelField(
+                T("Sections", "Sections") + $": {sheet.GetSectionCount()}",
+                GUILayout.Width(100f)
+            );
+
+            EditorGUILayout.LabelField(
+                T("Entries", "Paramètres") + $": {sheet.GetEntryCount()}",
+                GUILayout.Width(130f)
+            );
+
+            GUILayout.FlexibleSpace();
+
+            if (DrawColoredButton(
+                    T("Apply As Reference", "Appliquer comme référence"),
+                    new Color(0.35f, 0.85f, 0.45f),
+                    GUILayout.Width(175f)))
+            {
+                ConfirmAndApplySheetAsReference(sheet);
+            }
+
+            if (GUILayout.Button(T("Refresh", "Actualiser"), GUILayout.Width(95f)))
+            {
+                GameplayBalanceSheetUtility.RefreshCurrentValues(sheet);
+            }
+
+            if (GUILayout.Button(T("Open in Designer", "Ouvrir côté GD"), GUILayout.Width(130f)))
+            {
+                selectedSheet = sheet;
+                currentPage = MainPage.Designer;
+            }
+
+            if (GUILayout.Button(T("Ping Target", "Voir cible"), GUILayout.Width(95f)))
+            {
+                GameplayBalanceSheetUtility.PingTarget(sheet);
+            }
 
             EditorGUILayout.EndHorizontal();
 
@@ -1158,125 +1534,135 @@ namespace GameplayBalanceSheets.Editor
 
             DrawLargeTutorialParagraph(
                 T(
-                    "Gameplay Balance Sheets is a generic Unity editor tool. It lets developers expose only the gameplay parameters that are useful for balancing, then lets game designers tune these values from a clean interface without browsing technical components.",
-                    "Gameplay Balance Sheets est un outil Unity Editor générique. Il permet aux développeurs d’exposer uniquement les paramètres gameplay utiles à l’équilibrage, puis aux game designers de les modifier depuis une interface propre sans parcourir les composants techniques."
+                    "Gameplay Balance Sheets works like tabletop RPG character sheets, but for gameplay balancing. A sheet describes gameplay values that can be applied to a Unity target: prefab, scene object, player, enemy, boss, camera or UI controller.",
+                    "Gameplay Balance Sheets fonctionne comme des fiches de personnage de JDR, mais pour l’équilibrage gameplay. Une fiche décrit des valeurs gameplay applicables à une cible Unity : prefab, objet de scène, joueur, ennemi, boss, caméra ou contrôleur UI."
                 )
             );
 
-            DrawTutorialSectionTitle(T("What the tool is for", "À quoi sert l’outil"));
-
             DrawLargeTutorialParagraph(
                 T(
-                    "The tool creates balance sheets. A balance sheet is a readable list of selected values from a target prefab or scene object. The tool does not require gameplay scripts to use special tuning assets. It works with existing serialized fields.",
-                    "L’outil crée des fiches d’équilibrage. Une fiche est une liste lisible de valeurs sélectionnées depuis un prefab ou un objet de scène cible. L’outil n’oblige pas les scripts gameplay à utiliser des ScriptableObjects de tuning spécifiques. Il fonctionne avec les champs sérialisés existants."
+                    "The developer creates a reference sheet. The designer duplicates it into variants, changes Test values, applies a variant, and compares which one gives the best gameplay flow.",
+                    "Le développeur crée une fiche de référence. Le GD la duplique en variantes, modifie les valeurs Test, applique une variante, puis compare celle qui donne le meilleur flow gameplay."
+                )
+            );
+
+            DrawTutorialSectionTitle(T("Main workflow", "Workflow principal"));
+
+            DrawTutorialBlock(
+                T("1. Developer creates the reference sheet", "1. Le développeur crée la fiche de référence"),
+                T(
+                    "Go to Developer. Create a reference sheet, assign a Target Root, create sections, scan the target, and add useful serialized fields.",
+                    "Va dans Configuration Dev. Crée une fiche de référence, assigne une cible, crée des sections, scanne la cible et ajoute les champs sérialisés utiles."
+                )
+            );
+
+            DrawTutorialBlock(
+                T("2. Designer creates variants", "2. Le GD crée des variantes"),
+                T(
+                    "Go to Designer. Select a reference sheet and create a variant. Example: Player Balance Sheet becomes Player Balance Sheet - Test Fast Movement.",
+                    "Va dans Équilibrage GD. Sélectionne une fiche de référence et crée une variante. Exemple : Player Balance Sheet devient Player Balance Sheet - Test Fast Movement."
+                )
+            );
+
+            DrawTutorialBlock(
+                T("3. Designer edits Test values", "3. Le GD modifie les valeurs Test"),
+                T(
+                    "Baseline is the reference value. Current is the value currently on the Unity target. Test is the value prepared inside the selected sheet.",
+                    "Baseline est la valeur de référence. Current est la valeur actuellement présente sur la cible Unity. Test est la valeur préparée dans la fiche sélectionnée."
+                )
+            );
+
+            DrawTutorialBlock(
+                T("4. Designer applies values", "4. Le GD applique les valeurs"),
+                T(
+                    "Use Apply Whole Sheet to apply the selected sheet to the target, or use section selection to apply only selected entries.",
+                    "Utilise Appliquer toute la fiche pour appliquer la fiche sélectionnée à la cible, ou utilise la sélection par section pour appliquer uniquement certains paramètres."
+                )
+            );
+
+            DrawTutorialBlock(
+                T("5. Team validates the best sheet", "5. L’équipe valide la meilleure fiche"),
+                T(
+                    "Go to Sheet Application. Sheets are grouped as Target > Reference Sheet > Designer Variants. Use Apply As Reference only when the team decides that this sheet becomes the new reference.",
+                    "Va dans Application des fiches. Les fiches sont regroupées ainsi : Cible > Fiche de référence > Variantes GD. Utilise Appliquer comme référence uniquement quand l’équipe décide que cette fiche devient la nouvelle référence."
                 )
             );
 
             DrawTutorialSectionTitle(T("Designer Tutorial", "Tutoriel GD"));
 
             DrawTutorialBlock(
-                T("1. Select a balance sheet", "1. Sélectionner une fiche"),
+                T("Reference sheet", "Fiche de référence"),
                 T(
-                    "On the Designer page, select the balance sheet in the left panel. Each sheet is linked to a target object such as a player, enemy, boss, camera or UI controller.",
-                    "Dans la page Équilibrage GD, sélectionne une fiche dans le panneau de gauche. Chaque fiche est liée à une cible comme un joueur, un ennemi, un boss, une caméra ou un contrôleur UI."
+                    "A reference sheet is the base version created by a developer. By default, designers cannot edit it directly. They must create a variant.",
+                    "Une fiche de référence est la version de base créée par un développeur. Par défaut, les GD ne peuvent pas la modifier directement. Ils doivent créer une variante."
                 )
             );
 
             DrawTutorialBlock(
-                T("2. Understand Baseline", "2. Comprendre Baseline"),
+                T("Designer variant", "Variante GD"),
                 T(
-                    "Baseline is the official validated value. It is the reference value you can safely return to. If a test becomes bad or breaks the gameplay feeling, Revert To Baseline restores that reference.",
-                    "Baseline est la valeur officielle validée. C’est la valeur de référence à laquelle on peut revenir. Si un test devient mauvais ou casse le feeling gameplay, Revenir à la baseline restaure cette référence."
+                    "A designer variant is an editable copy of a reference sheet. Only the suffix is edited by the designer. Example: Test Fast Movement.",
+                    "Une variante GD est une copie modifiable d’une fiche de référence. Seul le suffixe est modifié par le GD. Exemple : Test Fast Movement."
                 )
             );
 
             DrawTutorialBlock(
-                T("3. Understand Current", "3. Comprendre Current"),
+                T("Section actions", "Actions de section"),
                 T(
-                    "Current is the value currently written on the target component. It represents what the game object is using right now in Unity.",
-                    "Current est la valeur actuellement écrite sur le composant cible. Elle représente ce que l’objet de jeu utilise réellement dans Unity à cet instant."
+                    "Select entries in a section, then use Apply Selected, Current → Test, Baseline → Test, or Restore Selected. These actions affect only selected entries in that section.",
+                    "Sélectionne des paramètres dans une section, puis utilise Appliquer sélection, Current → Test, Baseline → Test ou Restaurer sélection. Ces actions ne touchent que les paramètres sélectionnés de cette section."
                 )
             );
 
             DrawTutorialBlock(
-                T("4. Understand Test", "4. Comprendre Test"),
+                T("Status meanings", "Signification des états"),
                 T(
-                    "Test is the value you want to try next. Changing Test alone does not immediately modify the target. You must click Apply to write Test into Current.",
-                    "Test est la valeur que tu veux essayer. Modifier Test ne modifie pas immédiatement la cible. Il faut cliquer sur Appliquer pour écrire Test dans Current."
-                )
-            );
-
-            DrawTutorialBlock(
-                "Current → Test",
-                T(
-                    "Use this when you changed a value directly in the Inspector or when the target already has a good temporary value. It copies the current target value into the Test field so you can keep editing from there.",
-                    "À utiliser quand une valeur a été modifiée directement dans l’Inspector ou quand la cible possède déjà une bonne valeur temporaire. Cela copie la valeur actuelle de la cible dans Test pour continuer à travailler à partir de cette valeur."
-                )
-            );
-
-            DrawTutorialBlock(
-                "Baseline → Test",
-                T(
-                    "Use this when you want to prepare a return to the official reference without applying it immediately. It copies the baseline into Test, then you can Apply when ready.",
-                    "À utiliser quand tu veux préparer un retour à la valeur officielle sans l’appliquer immédiatement. Cela copie la baseline dans Test, puis tu peux appliquer quand tu es prêt."
-                )
-            );
-
-            DrawTutorialBlock(
-                T("Apply and Revert", "Appliquer et revenir"),
-                T(
-                    "Apply writes Test into the target component. Revert To Baseline puts the baseline value into Test and applies it. Section buttons only affect selected entries in that section.",
-                    "Appliquer écrit Test dans le composant cible. Revenir à la baseline met la baseline dans Test puis l’applique. Les boutons de section n’affectent que les paramètres sélectionnés dans cette section."
+                    "Reference means the target matches the baseline. Pending means Test is different from Current. Modified means the target uses a value different from the reference. Missing means the field no longer exists.",
+                    "Référence signifie que la cible correspond à la baseline. Test en attente signifie que Test est différent de Current. Modifié signifie que la cible utilise une valeur différente de la référence. Introuvable signifie que le champ n’existe plus."
                 )
             );
 
             DrawTutorialSectionTitle(T("Developer Tutorial", "Tutoriel Dev"));
 
             DrawTutorialBlock(
-                T("1. Create a sheet", "1. Créer une fiche"),
+                T("Create and configure", "Créer et configurer"),
                 T(
-                    "Go to the Developer page. Use Create Sheet in the lower-left configuration panel. Save the asset in your project folder, for example Assets/Design/BalanceSheets.",
-                    "Va dans Configuration Dev. Utilise Créer fiche dans le panneau de configuration en bas à gauche. Sauvegarde l’asset dans le dossier du projet, par exemple Assets/Design/BalanceSheets."
+                    "Create the reference sheet from Developer. Configure its title, target root and description in the lower-left panel.",
+                    "Crée la fiche de référence depuis Configuration Dev. Configure son titre, sa cible et sa description dans le panneau inférieur gauche."
                 )
             );
 
             DrawTutorialBlock(
-                T("2. Configure the sheet", "2. Configurer la fiche"),
+                T("Sections and scan", "Sections et scan"),
                 T(
-                    "Select the sheet in the left panel, then configure its title, target root and description in the lower-left panel.",
-                    "Sélectionne la fiche dans le panneau de gauche, puis configure son titre, sa cible et sa description dans le panneau inférieur gauche."
+                    "Create sections such as Movement, Jump, Combat, Camera or AI. Scan the target and add only fields that are useful for balancing.",
+                    "Crée des sections comme Movement, Jump, Combat, Camera ou AI. Scanne la cible et ajoute uniquement les champs utiles à l’équilibrage."
                 )
             );
 
             DrawTutorialBlock(
-                T("3. Create sections", "3. Créer des sections"),
+                T("Developer page is not for testing", "La page Dev ne sert pas aux tests"),
                 T(
-                    "Create sections such as Movement, Jump, Combat, Camera, Economy or AI. Sections are fully project-specific and can be reordered with drag and drop.",
-                    "Crée des sections comme Movement, Jump, Combat, Camera, Economy ou AI. Les sections sont entièrement propres au projet et peuvent être réordonnées par glisser-déposer."
+                    "The Developer page builds the sheet structure. Gameplay testing happens from Designer. Final validation happens from Sheet Application.",
+                    "La page Dev construit la structure de la fiche. Les tests gameplay se font depuis Équilibrage GD. La validation finale se fait depuis Application des fiches."
+                )
+            );
+
+            DrawTutorialSectionTitle(T("Settings and Git", "Paramètres et Git"));
+
+            DrawTutorialBlock(
+                T("Where preferences are stored", "Où sont enregistrées les préférences"),
+                T(
+                    "Language, display options and default folder are stored in Unity EditorPrefs on your local machine. They are not stored in the package files.",
+                    "La langue, les options d’affichage et le dossier par défaut sont enregistrés dans Unity EditorPrefs sur ta machine locale. Ils ne sont pas stockés dans les fichiers du package."
                 )
             );
 
             DrawTutorialBlock(
-                T("4. Scan the target", "4. Scanner la cible"),
+                T("Do you need to add them to .gitignore?", "Faut-il les ajouter au .gitignore ?"),
                 T(
-                    "Click Scan Target. The tool lists supported serialized values from MonoBehaviours: int, float, bool, string and enum.",
-                    "Clique sur Scanner la cible. L’outil liste les valeurs sérialisées compatibles des MonoBehaviours : int, float, bool, string et enum."
-                )
-            );
-
-            DrawTutorialBlock(
-                T("5. Add useful fields", "5. Ajouter les champs utiles"),
-                T(
-                    "Use the search bar to find useful gameplay values such as speed, damage, cooldown, jump height, health or range. Select fields, choose a target section, then click Add Selected To Section.",
-                    "Utilise la barre de recherche pour trouver les valeurs gameplay utiles comme speed, damage, cooldown, jump height, health ou range. Sélectionne les champs, choisis une section cible, puis clique sur Ajouter sélection à la section."
-                )
-            );
-
-            DrawTutorialBlock(
-                T("6. Validate baseline", "6. Valider la baseline"),
-                T(
-                    "When the current target values are validated by the team, use Set Baseline. This makes Current the new official reference.",
-                    "Quand les valeurs actuelles de la cible sont validées par l’équipe, utilise Définir baseline. Cela transforme Current en nouvelle référence officielle."
+                    "No. EditorPrefs are outside the project folder, so they are not committed to Git. The balance sheet assets created inside Assets are project data and should usually be committed.",
+                    "Non. Les EditorPrefs sont en dehors du dossier projet, donc ils ne sont pas commit dans Git. Les assets de fiches créés dans Assets sont des données projet et doivent généralement être commit."
                 )
             );
 
@@ -1284,13 +1670,12 @@ namespace GameplayBalanceSheets.Editor
 
             DrawLargeTutorialParagraph(
                 T(
-                    "A project has a Player prefab with movementSpeed, jumpHeight and attackDamage fields. The developer creates a sheet called Player Balance, assigns the Player prefab as Target Root, creates Movement, Jump and Combat sections, scans the target, then adds movementSpeed to Movement, jumpHeight to Jump and attackDamage to Combat. Designers can then tune these values from the Designer page.",
-                    "Un projet possède un prefab Player avec les champs movementSpeed, jumpHeight et attackDamage. Le développeur crée une fiche Player Balance, assigne le prefab Player comme cible, crée les sections Movement, Jump et Combat, scanne la cible, puis ajoute movementSpeed à Movement, jumpHeight à Jump et attackDamage à Combat. Les GD peuvent ensuite équilibrer ces valeurs depuis la page Équilibrage GD."
+                    "A Player prefab has movementSpeed, jumpHeight and attackDamage. The developer creates Player Balance Sheet, assigns the Player prefab, creates Movement, Jump and Combat sections, then adds these fields. The designer creates Player Balance Sheet - Test Fast Movement, changes movementSpeed, applies it, and tests the gameplay flow. If the team validates the result, the sheet can be applied as the new reference from Sheet Application.",
+                    "Un prefab Player possède movementSpeed, jumpHeight et attackDamage. Le développeur crée Player Balance Sheet, assigne le prefab Player, crée les sections Movement, Jump et Combat, puis ajoute ces champs. Le GD crée Player Balance Sheet - Test Fast Movement, modifie movementSpeed, applique la fiche et teste le flow gameplay. Si l’équipe valide le résultat, la fiche peut être appliquée comme nouvelle référence depuis Application des fiches."
                 )
             );
 
             EditorGUILayout.Space(20f);
-
             EditorGUILayout.EndScrollView();
         }
 
@@ -1318,6 +1703,14 @@ namespace GameplayBalanceSheets.Editor
                 GUILayout.Height(26f)
             );
 
+            DrawInfoBox(
+                T(
+                    "The language choice is saved locally with Unity EditorPrefs. It is not written into the Git repository and does not need to be added to .gitignore.",
+                    "Le choix de la langue est sauvegardé localement avec Unity EditorPrefs. Il n’est pas écrit dans le dépôt Git et n’a pas besoin d’être ajouté au .gitignore."
+                ),
+                MessageType.Info
+            );
+
             EditorGUILayout.Space(10f);
 
             EditorGUILayout.LabelField(
@@ -1342,8 +1735,8 @@ namespace GameplayBalanceSheets.Editor
 
             DrawInfoBox(
                 T(
-                    "This folder is used when creating new balance sheet assets. It must be inside the Unity project Assets folder.",
-                    "Ce dossier est utilisé lors de la création de nouvelles fiches d’équilibrage. Il doit être dans le dossier Assets du projet Unity."
+                    "This folder is used when creating new balance sheet assets. It must be inside the Unity project Assets folder. Assets created there are project data and should usually be committed to Git.",
+                    "Ce dossier est utilisé lors de la création de nouvelles fiches d’équilibrage. Il doit être dans le dossier Assets du projet Unity. Les assets créés dedans sont des données projet et doivent généralement être commit dans Git."
                 ),
                 MessageType.Info
             );
@@ -1351,6 +1744,22 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.Space(10f);
 
             EditorGUILayout.LabelField(T("Display Options", "Options d’affichage"), subtitleStyle);
+
+            allowReferenceSheetEditing = EditorGUILayout.ToggleLeft(
+                T(
+                    "Allow designers to edit reference sheets",
+                    "Autoriser les GD à modifier les fiches de référence"
+                ),
+                allowReferenceSheetEditing
+            );
+
+            DrawInfoBox(
+                T(
+                    "Recommended: keep this disabled. Designers should usually duplicate a reference sheet and edit the variant instead of editing the reference directly.",
+                    "Recommandé : garder cette option désactivée. Les GD doivent généralement dupliquer une fiche de référence et modifier la variante plutôt que modifier directement la référence."
+                ),
+                MessageType.Warning
+            );
 
             showTechnicalInfo = EditorGUILayout.ToggleLeft(
                 T(
@@ -1360,11 +1769,16 @@ namespace GameplayBalanceSheets.Editor
                 showTechnicalInfo
             );
 
-            showHelpBoxes = EditorGUILayout.ToggleLeft(
+            DrawInfoBox(
                 T(
-                    "Show help boxes",
-                    "Afficher les bulles d’aide"
+                    "Technical information shows component names and property paths. Useful for developers, usually unnecessary for designers.",
+                    "Les informations techniques affichent les noms de composants et les chemins de propriétés. Utile pour les développeurs, généralement inutile pour les GD."
                 ),
+                MessageType.Info
+            );
+
+            showHelpBoxes = EditorGUILayout.ToggleLeft(
+                T("Show help boxes", "Afficher les bulles d’aide"),
                 showHelpBoxes
             );
 
@@ -1384,6 +1798,14 @@ namespace GameplayBalanceSheets.Editor
                 showDetailedSidebar
             );
 
+            DrawInfoBox(
+                T(
+                    "These display settings are also stored locally in Unity EditorPrefs. They are personal editor preferences, not shared project configuration.",
+                    "Ces options d’affichage sont aussi enregistrées localement dans Unity EditorPrefs. Ce sont des préférences personnelles de l’éditeur, pas une configuration projet partagée."
+                ),
+                MessageType.Info
+            );
+
             EditorGUILayout.Space(12f);
 
             if (DrawColoredButton(
@@ -1398,7 +1820,6 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(20f);
-
             EditorGUILayout.EndScrollView();
         }
 
@@ -1419,28 +1840,6 @@ namespace GameplayBalanceSheets.Editor
             );
         }
 
-        private void DrawEntryValueRow(GameplayBalanceSheetEntry entry)
-        {
-            EditorGUILayout.BeginHorizontal();
-
-            DrawValueCell("Baseline", entry.baselineValue, 140f);
-            DrawValueCell("Current", entry.currentValue, 140f);
-
-            EditorGUILayout.LabelField("Test", compactBoldLabelStyle, GUILayout.Width(35f));
-
-            string newTestValue = DrawValueField(entry, entry.testValue, 120f);
-
-            if (newTestValue != entry.testValue)
-            {
-                entry.testValue = newTestValue;
-                EditorUtility.SetDirty(selectedSheet);
-            }
-
-            DrawStateBadge(entry, 135f);
-
-            EditorGUILayout.EndHorizontal();
-        }
-
         private void DrawValueCell(string label, string value, float width)
         {
             EditorGUILayout.BeginHorizontal(GUILayout.Width(width));
@@ -1455,12 +1854,7 @@ namespace GameplayBalanceSheets.Editor
         {
             if (entry.propertyTypeName == "Boolean")
             {
-                bool boolValue = string.Equals(
-                    value,
-                    "true",
-                    StringComparison.OrdinalIgnoreCase
-                );
-
+                bool boolValue = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
                 bool newBoolValue = EditorGUILayout.Toggle(boolValue, GUILayout.Width(width));
                 return newBoolValue ? "true" : "false";
             }
@@ -1504,22 +1898,30 @@ namespace GameplayBalanceSheets.Editor
         private void DrawStateBadge(GameplayBalanceSheetEntry entry, float width)
         {
             Color color = GetEntryStateColor(entry);
-            GUIStyle style = new GUIStyle(compactBoldLabelStyle)
-            {
-                normal = { textColor = color },
-                alignment = TextAnchor.MiddleLeft
-            };
+
+            GUIStyle style = new GUIStyle(compactBoldLabelStyle);
+            style.normal.textColor = color;
+            style.alignment = TextAnchor.MiddleLeft;
 
             EditorGUILayout.LabelField(GetLocalizedState(entry), style, GUILayout.Width(width));
         }
 
+        private void DrawApplicationStateBadge(GameplayBalanceSheetApplicationState state, float width)
+        {
+            Color color = GetApplicationStateColor(state);
+
+            GUIStyle style = new GUIStyle(compactBoldLabelStyle);
+            style.normal.textColor = color;
+            style.alignment = TextAnchor.MiddleLeft;
+
+            EditorGUILayout.LabelField(GetLocalizedApplicationState(state), style, GUILayout.Width(width));
+        }
+
         private void DrawColoredLabel(string text, Color color, bool bold)
         {
-            GUIStyle style = new GUIStyle(bold ? EditorStyles.boldLabel : EditorStyles.label)
-            {
-                normal = { textColor = color },
-                wordWrap = true
-            };
+            GUIStyle style = new GUIStyle(bold ? EditorStyles.boldLabel : EditorStyles.label);
+            style.normal.textColor = color;
+            style.wordWrap = true;
 
             EditorGUILayout.LabelField(text, style);
         }
@@ -1548,22 +1950,21 @@ namespace GameplayBalanceSheets.Editor
 
         private void DrawSmallStat(string label, int value, Color color)
         {
-            GUIStyle style = new GUIStyle(EditorStyles.miniBoldLabel)
-            {
-                normal = { textColor = color }
-            };
+            GUIStyle style = new GUIStyle(EditorStyles.miniBoldLabel);
+            style.normal.textColor = color;
 
-            EditorGUILayout.LabelField($"{label}: {value}", style, GUILayout.Width(105f));
+            EditorGUILayout.LabelField($"{label}: {value}", style, GUILayout.Width(115f));
         }
 
         private void DrawStatusExplanation(string label, string explanation, Color color)
         {
-            EditorGUILayout.BeginVertical("box", GUILayout.MinWidth(220f));
+            EditorGUILayout.BeginVertical("box");
 
             DrawColoredLabel(label, color, true);
             EditorGUILayout.LabelField(explanation, descriptionStyle);
 
             EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(4f);
         }
 
         private void DrawTutorialSectionTitle(string title)
@@ -1696,6 +2097,15 @@ namespace GameplayBalanceSheets.Editor
             ResetSectionReorderList();
         }
 
+        private void SelectSheet(GameplayBalanceSheetProfile sheet)
+        {
+            selectedSheet = sheet;
+            selectedSectionIndex = 0;
+            scannedProperties.Clear();
+            ResetSectionReorderList();
+            GUI.FocusControl(null);
+        }
+
         private void CreateSheet()
         {
             GameplayBalanceSheetProfile sheet =
@@ -1710,16 +2120,51 @@ namespace GameplayBalanceSheets.Editor
             }
         }
 
-        private void ConfirmAndDeleteSheet()
+        private void DuplicateSelectedSheetForDesigner()
         {
             if (selectedSheet == null)
             {
                 return;
             }
 
-            string title = string.IsNullOrWhiteSpace(selectedSheet.sheetTitle)
-                ? selectedSheet.name
-                : selectedSheet.sheetTitle;
+            GameplayBalanceSheetProfile duplicate =
+                GameplayBalanceSheetUtility.DuplicateSheetForDesigner(
+                    selectedSheet,
+                    duplicateVariantName,
+                    defaultSheetsFolder
+                );
+
+            RefreshSheets();
+
+            if (duplicate != null)
+            {
+                selectedSheet = duplicate;
+                currentPage = MainPage.Designer;
+            }
+        }
+
+        private void ConfirmAndDeleteSheet(bool designerVariantOnly)
+        {
+            if (selectedSheet == null)
+            {
+                return;
+            }
+
+            if (designerVariantOnly && !selectedSheet.isDesignerVariant)
+            {
+                EditorUtility.DisplayDialog(
+                    T("Delete Blocked", "Suppression bloquée"),
+                    T(
+                        "Designers can only delete designer variants.",
+                        "Les GD peuvent seulement supprimer les variantes GD."
+                    ),
+                    "OK"
+                );
+
+                return;
+            }
+
+            string title = selectedSheet.DisplayTitle;
 
             bool confirmed = EditorUtility.DisplayDialog(
                 T("Delete Balance Sheet", "Supprimer la fiche"),
@@ -1851,12 +2296,12 @@ namespace GameplayBalanceSheets.Editor
         private void ConfirmAndRevertAll()
         {
             bool confirmed = EditorUtility.DisplayDialog(
-                T("Revert All", "Tout réinitialiser"),
+                T("Restore Reference", "Restaurer la référence"),
                 T(
-                    "This will revert all entries to their baseline values.",
-                    "Tous les paramètres vont revenir à leur valeur baseline."
+                    "This will restore all entries to their baseline values.",
+                    "Tous les paramètres vont revenir à leur valeur de référence."
                 ),
-                T("Revert All", "Tout réinitialiser"),
+                T("Restore", "Restaurer"),
                 T("Cancel", "Annuler")
             );
 
@@ -1868,15 +2313,20 @@ namespace GameplayBalanceSheets.Editor
             GameplayBalanceSheetUtility.RevertAllToBaseline(selectedSheet);
         }
 
-        private void ConfirmAndSetCurrentAsBaseline()
+        private void ConfirmAndApplySheetAsReference(GameplayBalanceSheetProfile sheet)
         {
+            if (sheet == null)
+            {
+                return;
+            }
+
             bool confirmed = EditorUtility.DisplayDialog(
-                T("Set Current As Baseline", "Définir Current comme baseline"),
+                T("Apply As Reference", "Appliquer comme référence"),
                 T(
-                    "This will replace the official baseline of every entry with the current values from the target. Continue only if these values are validated.",
-                    "Cela remplacera la baseline officielle de tous les paramètres par les valeurs actuelles de la cible. Continue uniquement si ces valeurs sont validées."
+                    "This will apply this sheet to the target and turn this sheet into a new reference. Use this only when the team has validated the gameplay result.",
+                    "Cela va appliquer cette fiche à la cible et transformer cette fiche en nouvelle référence. À utiliser uniquement quand l’équipe a validé le résultat gameplay."
                 ),
-                T("Set Baseline", "Définir baseline"),
+                T("Apply As Reference", "Appliquer comme référence"),
                 T("Cancel", "Annuler")
             );
 
@@ -1885,7 +2335,10 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
-            GameplayBalanceSheetUtility.SetCurrentAsBaseline(selectedSheet);
+            GameplayBalanceSheetUtility.ApplySheetAsNewReference(sheet);
+
+            RefreshSheets();
+            selectedSheet = sheet;
         }
 
         private void SavePreferences()
@@ -1896,6 +2349,7 @@ namespace GameplayBalanceSheets.Editor
             EditorPrefs.SetBool(ShowHelpBoxesPrefKey, showHelpBoxes);
             EditorPrefs.SetBool(ShowEntryDescriptionsPrefKey, showEntryDescriptions);
             EditorPrefs.SetBool(ShowDetailedSidebarPrefKey, showDetailedSidebar);
+            EditorPrefs.SetBool(AllowReferenceEditingPrefKey, allowReferenceSheetEditing);
 
             EditorUtility.DisplayDialog(
                 T("Preferences Saved", "Préférences sauvegardées"),
@@ -1980,7 +2434,7 @@ namespace GameplayBalanceSheets.Editor
             {
                 GameplayBalanceSheetEntry entry = section.entries[entryIndex];
 
-                if (entry != null && entry.selected && entry.HasPendingTestValue)
+                if (entry != null && entry.selected)
                 {
                     GameplayBalanceSheetUtility.ApplyEntryTestValue(selectedSheet, entry);
                 }
@@ -1997,12 +2451,12 @@ namespace GameplayBalanceSheets.Editor
             }
 
             bool confirmed = EditorUtility.DisplayDialog(
-                T("Revert Section Selection", "Réinitialiser la sélection de section"),
+                T("Restore Section Selection", "Restaurer la sélection de section"),
                 T(
-                    "Selected entries in this section will revert to baseline.",
-                    "Les paramètres sélectionnés dans cette section vont revenir à leur baseline."
+                    "Selected entries in this section will restore their reference value.",
+                    "Les paramètres sélectionnés dans cette section vont retrouver leur valeur de référence."
                 ),
-                T("Revert", "Réinitialiser"),
+                T("Restore", "Restaurer"),
                 T("Cancel", "Annuler")
             );
 
@@ -2024,6 +2478,46 @@ namespace GameplayBalanceSheets.Editor
             GameplayBalanceSheetUtility.RefreshCurrentValues(selectedSheet);
         }
 
+        private void CopyCurrentToTestInSection(GameplayBalanceSheetSection section)
+        {
+            if (section == null || section.entries == null || !CanDesignerEditSelectedSheet())
+            {
+                return;
+            }
+
+            for (int entryIndex = 0; entryIndex < section.entries.Count; entryIndex++)
+            {
+                GameplayBalanceSheetEntry entry = section.entries[entryIndex];
+
+                if (entry != null && entry.selected)
+                {
+                    entry.CopyCurrentToTest();
+                }
+            }
+
+            EditorUtility.SetDirty(selectedSheet);
+        }
+
+        private void CopyBaselineToTestInSection(GameplayBalanceSheetSection section)
+        {
+            if (section == null || section.entries == null || !CanDesignerEditSelectedSheet())
+            {
+                return;
+            }
+
+            for (int entryIndex = 0; entryIndex < section.entries.Count; entryIndex++)
+            {
+                GameplayBalanceSheetEntry entry = section.entries[entryIndex];
+
+                if (entry != null && entry.selected)
+                {
+                    entry.CopyBaselineToTest();
+                }
+            }
+
+            EditorUtility.SetDirty(selectedSheet);
+        }
+
         private void EnsureSections()
         {
             if (selectedSheet.sections == null)
@@ -2041,6 +2535,130 @@ namespace GameplayBalanceSheets.Editor
         // --------------------------------------------------------------------
         // Queries / State
         // --------------------------------------------------------------------
+
+        private List<GameplayBalanceSheetProfile> GetReferenceSheets()
+        {
+            List<GameplayBalanceSheetProfile> references = new List<GameplayBalanceSheetProfile>();
+
+            for (int i = 0; i < sheets.Count; i++)
+            {
+                GameplayBalanceSheetProfile sheet = sheets[i];
+
+                if (sheet != null && !sheet.isDesignerVariant)
+                {
+                    references.Add(sheet);
+                }
+            }
+
+            references.Sort((left, right) =>
+                string.Compare(left.DisplayTitle, right.DisplayTitle, StringComparison.Ordinal)
+            );
+
+            return references;
+        }
+
+        private List<GameplayBalanceSheetProfile> GetVariantsForReference(
+            GameplayBalanceSheetProfile referenceSheet
+        )
+        {
+            List<GameplayBalanceSheetProfile> variants = new List<GameplayBalanceSheetProfile>();
+
+            if (referenceSheet == null)
+            {
+                return variants;
+            }
+
+            for (int i = 0; i < sheets.Count; i++)
+            {
+                GameplayBalanceSheetProfile sheet = sheets[i];
+
+                if (sheet != null &&
+                    sheet.isDesignerVariant &&
+                    sheet.sourceSheet == referenceSheet)
+                {
+                    variants.Add(sheet);
+                }
+            }
+
+            variants.Sort((left, right) =>
+                string.Compare(left.VariantSuffix, right.VariantSuffix, StringComparison.Ordinal)
+            );
+
+            return variants;
+        }
+
+        private bool ShouldShowReferenceGroup(GameplayBalanceSheetProfile referenceSheet)
+        {
+            if (referenceSheet == null)
+            {
+                return false;
+            }
+
+            if (MatchesSheetSearch(referenceSheet))
+            {
+                return true;
+            }
+
+            List<GameplayBalanceSheetProfile> variants = GetVariantsForReference(referenceSheet);
+
+            for (int i = 0; i < variants.Count; i++)
+            {
+                if (MatchesSheetSearch(variants[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private List<TargetGroup> BuildTargetGroups()
+        {
+            List<TargetGroup> groups = new List<TargetGroup>();
+            List<GameplayBalanceSheetProfile> references = GetReferenceSheets();
+
+            for (int i = 0; i < references.Count; i++)
+            {
+                GameplayBalanceSheetProfile reference = references[i];
+
+                if (reference == null)
+                {
+                    continue;
+                }
+
+                TargetGroup group = FindTargetGroup(groups, reference.targetRoot);
+
+                if (group == null)
+                {
+                    group = new TargetGroup(reference.targetRoot);
+                    groups.Add(group);
+                }
+
+                group.references.Add(reference);
+            }
+
+            groups.Sort((left, right) =>
+            {
+                string leftName = left.target != null ? left.target.name : string.Empty;
+                string rightName = right.target != null ? right.target.name : string.Empty;
+                return string.Compare(leftName, rightName, StringComparison.Ordinal);
+            });
+
+            return groups;
+        }
+
+        private TargetGroup FindTargetGroup(List<TargetGroup> groups, GameObject target)
+        {
+            for (int i = 0; i < groups.Count; i++)
+            {
+                if (groups[i].target == target)
+                {
+                    return groups[i];
+                }
+            }
+
+            return null;
+        }
 
         private string[] GetSectionNames()
         {
@@ -2071,6 +2689,11 @@ namespace GameplayBalanceSheets.Editor
 
         private bool MatchesSheetSearch(GameplayBalanceSheetProfile sheet)
         {
+            if (sheet == null)
+            {
+                return false;
+            }
+
             if (string.IsNullOrWhiteSpace(sheetSearchText))
             {
                 return true;
@@ -2078,7 +2701,7 @@ namespace GameplayBalanceSheets.Editor
 
             string search = sheetSearchText.ToLowerInvariant();
 
-            return SafeLower(sheet.sheetTitle).Contains(search) ||
+            return SafeLower(sheet.DisplayTitle).Contains(search) ||
                    SafeLower(sheet.sheetDescription).Contains(search) ||
                    SafeLower(sheet.name).Contains(search) ||
                    SafeLower(sheet.targetRoot != null ? sheet.targetRoot.name : string.Empty).Contains(search);
@@ -2099,64 +2722,181 @@ namespace GameplayBalanceSheets.Editor
                    SafeLower(property.currentValue).Contains(search);
         }
 
+        private bool CanDesignerEditSelectedSheet()
+        {
+            if (selectedSheet == null)
+            {
+                return false;
+            }
+
+            if (selectedSheet.isDesignerVariant)
+            {
+                return true;
+            }
+
+            if (allowReferenceSheetEditing)
+            {
+                return true;
+            }
+
+            return !selectedSheet.lockSourceSheetForDesigner;
+        }
+
+        private bool GetFoldout(Dictionary<string, bool> foldouts, string key, bool defaultValue)
+        {
+            if (!foldouts.ContainsKey(key))
+            {
+                foldouts.Add(key, defaultValue);
+            }
+
+            return foldouts[key];
+        }
+
+        private void SetFoldout(Dictionary<string, bool> foldouts, string key, bool value)
+        {
+            if (foldouts.ContainsKey(key))
+            {
+                foldouts[key] = value;
+            }
+            else
+            {
+                foldouts.Add(key, value);
+            }
+        }
+
+        private string GetTargetKey(GameObject target, int index)
+        {
+            return target != null
+                ? "target_" + target.GetInstanceID()
+                : "target_null_" + index;
+        }
+
+        private string GetSheetKey(GameplayBalanceSheetProfile sheet)
+        {
+            if (sheet == null)
+            {
+                return "null";
+            }
+
+            string path = AssetDatabase.GetAssetPath(sheet);
+
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                return path;
+            }
+
+            return "sheet_" + sheet.GetInstanceID();
+        }
+
         private Color GetEntryPanelColor(GameplayBalanceSheetEntry entry)
         {
-            if (entry.isMissing)
+            switch (entry.State)
             {
-                return new Color(1f, 0.55f, 0.55f);
-            }
+                case GameplayBalanceSheetEntryState.Missing:
+                    return new Color(1f, 0.55f, 0.55f);
 
-            if (entry.HasPendingTestValue)
-            {
-                return new Color(0.55f, 0.75f, 1f);
-            }
+                case GameplayBalanceSheetEntryState.Pending:
+                    return new Color(0.55f, 0.75f, 1f);
 
-            if (entry.HasChangedFromBaseline)
-            {
-                return new Color(1f, 0.75f, 0.35f);
-            }
+                case GameplayBalanceSheetEntryState.Modified:
+                    return new Color(0.68f, 0.58f, 1f);
 
-            return Color.white;
+                case GameplayBalanceSheetEntryState.Baseline:
+                    return Color.white;
+
+                default:
+                    return Color.white;
+            }
         }
 
         private Color GetEntryStateColor(GameplayBalanceSheetEntry entry)
         {
-            if (entry.isMissing)
+            switch (entry.State)
             {
-                return new Color(1f, 0.35f, 0.35f);
-            }
+                case GameplayBalanceSheetEntryState.Missing:
+                    return new Color(1f, 0.35f, 0.35f);
 
-            if (entry.HasPendingTestValue)
+                case GameplayBalanceSheetEntryState.Pending:
+                    return new Color(0.35f, 0.65f, 1f);
+
+                case GameplayBalanceSheetEntryState.Modified:
+                    return new Color(0.6f, 0.45f, 1f);
+
+                case GameplayBalanceSheetEntryState.Baseline:
+                    return new Color(0.3f, 0.85f, 0.45f);
+
+                default:
+                    return Color.white;
+            }
+        }
+
+        private Color GetApplicationStateColor(GameplayBalanceSheetApplicationState state)
+        {
+            switch (state)
             {
-                return new Color(0.35f, 0.65f, 1f);
-            }
+                case GameplayBalanceSheetApplicationState.Broken:
+                    return new Color(1f, 0.35f, 0.35f);
 
-            if (entry.HasChangedFromBaseline)
-            {
-                return new Color(1f, 0.65f, 0.25f);
-            }
+                case GameplayBalanceSheetApplicationState.Partial:
+                    return new Color(1f, 0.65f, 0.25f);
 
-            return new Color(0.3f, 0.85f, 0.45f);
+                case GameplayBalanceSheetApplicationState.NotApplied:
+                    return new Color(0.35f, 0.65f, 1f);
+
+                case GameplayBalanceSheetApplicationState.Modified:
+                    return new Color(0.6f, 0.45f, 1f);
+
+                case GameplayBalanceSheetApplicationState.Reference:
+                    return new Color(0.3f, 0.85f, 0.45f);
+
+                default:
+                    return Color.white;
+            }
         }
 
         private string GetLocalizedState(GameplayBalanceSheetEntry entry)
         {
-            if (entry.isMissing)
+            switch (entry.State)
             {
-                return T("Missing", "Introuvable");
-            }
+                case GameplayBalanceSheetEntryState.Missing:
+                    return T("Missing", "Introuvable");
 
-            if (entry.HasPendingTestValue)
+                case GameplayBalanceSheetEntryState.Pending:
+                    return T("Pending", "Test en attente");
+
+                case GameplayBalanceSheetEntryState.Modified:
+                    return T("Modified", "Modifié");
+
+                case GameplayBalanceSheetEntryState.Baseline:
+                    return T("Reference", "Référence");
+
+                default:
+                    return T("Unknown", "Inconnu");
+            }
+        }
+
+        private string GetLocalizedApplicationState(GameplayBalanceSheetApplicationState state)
+        {
+            switch (state)
             {
-                return T("Pending", "Test en attente");
-            }
+                case GameplayBalanceSheetApplicationState.Broken:
+                    return T("Broken", "Cassée");
 
-            if (entry.HasChangedFromBaseline)
-            {
-                return T("Changed", "Modifié");
-            }
+                case GameplayBalanceSheetApplicationState.Partial:
+                    return T("Partial", "Partielle");
 
-            return "OK";
+                case GameplayBalanceSheetApplicationState.NotApplied:
+                    return T("Not Applied", "Non appliquée");
+
+                case GameplayBalanceSheetApplicationState.Modified:
+                    return T("Modified", "Modifiée");
+
+                case GameplayBalanceSheetApplicationState.Reference:
+                    return T("Reference", "Référence");
+
+                default:
+                    return T("Unknown", "Inconnu");
+            }
         }
 
         private SheetStats GetSheetStats(GameplayBalanceSheetProfile sheet)
@@ -2186,17 +2926,23 @@ namespace GameplayBalanceSheets.Editor
                         continue;
                     }
 
-                    if (entry.isMissing)
+                    switch (entry.State)
                     {
-                        stats.missing++;
-                    }
-                    else if (entry.HasPendingTestValue)
-                    {
-                        stats.pending++;
-                    }
-                    else if (entry.HasChangedFromBaseline)
-                    {
-                        stats.changed++;
+                        case GameplayBalanceSheetEntryState.Missing:
+                            stats.missing++;
+                            break;
+
+                        case GameplayBalanceSheetEntryState.Pending:
+                            stats.pending++;
+                            break;
+
+                        case GameplayBalanceSheetEntryState.Modified:
+                            stats.modified++;
+                            break;
+
+                        case GameplayBalanceSheetEntryState.Baseline:
+                            stats.baseline++;
+                            break;
                     }
                 }
             }
@@ -2214,10 +2960,22 @@ namespace GameplayBalanceSheets.Editor
             return string.IsNullOrEmpty(value) ? string.Empty : value.ToLowerInvariant();
         }
 
+        private sealed class TargetGroup
+        {
+            public readonly GameObject target;
+            public readonly List<GameplayBalanceSheetProfile> references = new List<GameplayBalanceSheetProfile>();
+
+            public TargetGroup(GameObject target)
+            {
+                this.target = target;
+            }
+        }
+
         private struct SheetStats
         {
+            public int baseline;
             public int pending;
-            public int changed;
+            public int modified;
             public int missing;
         }
     }
