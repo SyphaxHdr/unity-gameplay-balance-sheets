@@ -64,16 +64,21 @@ namespace GameplayBalanceSheets.Editor
             return sheets;
         }
 
-        public static GameplayBalanceSheetProfile CreateSheet()
+        public static GameplayBalanceSheetProfile CreateSheet(string defaultFolder)
         {
-            EnsureFolder(DefaultSheetsFolder);
+            if (string.IsNullOrWhiteSpace(defaultFolder))
+            {
+                defaultFolder = DefaultSheetsFolder;
+            }
+
+            EnsureFolder(defaultFolder);
 
             string path = EditorUtility.SaveFilePanelInProject(
                 "Create Balance Sheet",
                 "GD_New_BalanceSheet",
                 "asset",
                 "Choose where to save this balance sheet.",
-                DefaultSheetsFolder
+                defaultFolder
             );
 
             if (string.IsNullOrWhiteSpace(path))
@@ -92,6 +97,30 @@ namespace GameplayBalanceSheets.Editor
             EditorGUIUtility.PingObject(sheet);
 
             return sheet;
+        }
+
+        public static bool DeleteSheet(GameplayBalanceSheetProfile sheet)
+        {
+            if (sheet == null)
+            {
+                return false;
+            }
+
+            string path = AssetDatabase.GetAssetPath(sheet);
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            Selection.activeObject = null;
+
+            bool deleted = AssetDatabase.DeleteAsset(path);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            return deleted;
         }
 
         public static List<ScannedBalanceProperty> ScanTarget(GameObject targetRoot)
