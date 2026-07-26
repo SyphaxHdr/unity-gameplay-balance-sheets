@@ -53,3 +53,6 @@ Documentation~/generated/
 
 # Local test presets
 _TestPresets/
+# Stray git artifacts (must never be committed at repo root)
+FETCH_HEAD
+ORIG_HEAD
