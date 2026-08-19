@@ -1,0 +1,22 @@
+{
+  "name": "GameplayBalanceSheets.Editor.Tests",
+  "rootNamespace": "GameplayBalanceSheets.Editor.Tests",
+  "references": [
+    "GameplayBalanceSheets.Runtime",
+    "GameplayBalanceSheets.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

@@ -2,6 +2,18 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.3.0]
+
+### Added
+- Added ScriptableObject assets as balance sheet targets.
+- Added Editor tests for ScriptableObject scanning, apply/refresh round trips, and GameObject scan regression coverage.
+
+### Changed
+- Generalized target selection, grouping, scanning, refresh, apply, save, and ping workflows to support both GameObjects and ScriptableObjects.
+- Preserved existing `targetRoot` data through Unity serialization migration and a source-compatible GameObject accessor.
+- Updated the in-editor tutorial and English/French documentation for both target types.
+- Fixed the English documentation link in package metadata and the README.
+
 ## [0.2.0]
 
 ### Added

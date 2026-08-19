@@ -16,6 +16,7 @@ Ici, une fiche décrit des valeurs gameplay applicables à une cible Unity, par 
 * un objet de scène
 * un contrôleur UI
 * n’importe quel GameObject contenant des champs sérialisés dans des MonoBehaviours
+* n’importe quel asset ScriptableObject contenant des champs sérialisés compatibles
 
 L’objectif est de permettre aux développeurs d’exposer une fois les valeurs gameplay utiles, puis de permettre aux game designers de créer des variantes et de tester différents feelings sans devoir parcourir manuellement les composants techniques dans l’Inspector.
 
@@ -31,7 +32,7 @@ Une **fiche de référence** est la fiche de base créée par un développeur.
 
 Elle définit :
 
-* l’objet ou le prefab cible
+* la cible GameObject ou ScriptableObject
 * les sections gameplay
 * les paramètres exposés
 * les valeurs de référence, appelées `Baseline`
@@ -65,7 +66,7 @@ Le nom de base reste lié à la fiche de référence.
 
 ### Cible
 
-Une **cible** est l’objet ou le prefab Unity sur lequel une fiche agit.
+Une **cible** est soit une hiérarchie de GameObjects (objet de scène ou prefab), soit un asset ScriptableObject sur lequel une fiche agit.
 
 Exemple :
 
@@ -100,7 +101,7 @@ Baseline : 5.2
 
 `Current` est la valeur actuellement écrite sur la cible Unity.
 
-Elle représente ce que le prefab ou l’objet de scène utilise actuellement.
+Elle représente ce que la cible GameObject ou ScriptableObject utilise actuellement.
 
 Exemple :
 
@@ -230,13 +231,13 @@ Les sections peuvent être réordonnées par glisser-déposer.
 
 ### Étape 3 — Le développeur scanne la cible
 
-Dans la page `Configuration Dev`, il faut assigner une `Target Root`, puis cliquer sur :
+Dans la page `Configuration Dev`, il faut assigner une `Cible` GameObject ou ScriptableObject, puis cliquer sur :
 
 ```txt
 Scanner la cible
 ```
 
-L’outil scanne les champs sérialisés compatibles dans les MonoBehaviours.
+Pour une cible GameObject, l’outil scanne les champs sérialisés compatibles des MonoBehaviours dans toute la hiérarchie. Pour une cible ScriptableObject, il scanne directement les champs sérialisés de l’asset.
 
 Types supportés :
 

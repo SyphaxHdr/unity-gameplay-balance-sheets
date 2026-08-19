@@ -141,7 +141,7 @@ namespace GameplayBalanceSheets.Editor
 
             duplicate.sheetTitle = sourceSheet.sheetTitle;
             duplicate.sheetDescription = sourceSheet.sheetDescription;
-            duplicate.targetRoot = sourceSheet.targetRoot;
+            duplicate.target = sourceSheet.target;
             duplicate.lockSourceSheetForDesigner = sourceSheet.lockSourceSheetForDesigner;
             duplicate.isDesignerVariant = true;
             duplicate.sourceSheet = sourceSheet;
@@ -249,11 +249,28 @@ namespace GameplayBalanceSheets.Editor
             return assetsPath;
         }
 
-        public static List<ScannedBalanceProperty> ScanTarget(GameObject targetRoot)
+        public static List<ScannedBalanceProperty> ScanTarget(UnityEngine.Object target)
         {
             List<ScannedBalanceProperty> results = new List<ScannedBalanceProperty>();
 
-            if (targetRoot == null)
+            if (target == null)
+            {
+                return results;
+            }
+
+            if (target is ScriptableObject scriptableObject)
+            {
+                AddSerializedProperties(
+                    results,
+                    scriptableObject,
+                    ".",
+                    0
+                );
+
+                return results;
+            }
+
+            if (!(target is GameObject targetRoot))
             {
                 return results;
             }
@@ -269,57 +286,10 @@ namespace GameplayBalanceSheets.Editor
                     continue;
                 }
 
-                Type componentType = component.GetType();
-
                 string componentPath = GetRelativeTransformPath(targetRoot.transform, component.transform);
                 int componentIndex = GetComponentIndex(component);
 
-                SerializedObject serializedObject = new SerializedObject(component);
-                SerializedProperty property = serializedObject.GetIterator();
-
-                bool enterChildren = true;
-
-                while (property.NextVisible(enterChildren))
-                {
-                    enterChildren = true;
-
-                    if (!ShouldIncludeProperty(property))
-                    {
-                        continue;
-                    }
-
-                    string propertyPath = property.propertyPath;
-                    string componentAssemblyName = componentType.AssemblyQualifiedName;
-
-                    string id = BuildEntryId(
-                        componentPath,
-                        componentAssemblyName,
-                        componentIndex,
-                        propertyPath
-                    );
-
-                    ScannedBalanceProperty scannedProperty = new ScannedBalanceProperty
-                    {
-                        selected = false,
-                        id = id,
-                        componentPath = componentPath,
-                        componentName = componentType.Name,
-                        componentTypeName = componentType.FullName,
-                        componentAssemblyQualifiedTypeName = componentAssemblyName,
-                        componentIndex = componentIndex,
-                        propertyPath = propertyPath,
-                        propertyTypeName = property.propertyType.ToString(),
-                        displayName = BuildDisplayName(propertyPath),
-                        currentValue = GetPropertyValueAsString(property)
-                    };
-
-                    if (property.propertyType == SerializedPropertyType.Enum)
-                    {
-                        scannedProperty.enumNames.AddRange(property.enumNames);
-                    }
-
-                    results.Add(scannedProperty);
-                }
+                AddSerializedProperties(results, component, componentPath, componentIndex);
             }
 
             return results;
@@ -385,7 +355,7 @@ namespace GameplayBalanceSheets.Editor
 
         public static void RefreshCurrentValues(GameplayBalanceSheetProfile sheet)
         {
-            if (sheet == null || sheet.targetRoot == null)
+            if (sheet == null || !sheet.HasSupportedTarget)
             {
                 return;
             }
@@ -404,20 +374,20 @@ namespace GameplayBalanceSheets.Editor
             GameplayBalanceSheetEntry entry
         )
         {
-            if (sheet == null || sheet.targetRoot == null || entry == null)
+            if (sheet == null || !sheet.HasSupportedTarget || entry == null)
             {
                 return false;
             }
 
-            MonoBehaviour component = FindComponent(sheet.targetRoot, entry);
+            UnityEngine.Object serializedTarget = FindSerializedTarget(sheet.target, entry);
 
-            if (component == null)
+            if (serializedTarget == null)
             {
                 MarkEntryMissing(entry);
                 return false;
             }
 
-            SerializedObject serializedObject = new SerializedObject(component);
+            SerializedObject serializedObject = new SerializedObject(serializedTarget);
             SerializedProperty property = serializedObject.FindProperty(entry.propertyPath);
 
             if (property == null)
@@ -446,20 +416,20 @@ namespace GameplayBalanceSheets.Editor
             GameplayBalanceSheetEntry entry
         )
         {
-            if (sheet == null || sheet.targetRoot == null || entry == null)
+            if (sheet == null || !sheet.HasSupportedTarget || entry == null)
             {
                 return false;
             }
 
-            MonoBehaviour component = FindComponent(sheet.targetRoot, entry);
+            UnityEngine.Object serializedTarget = FindSerializedTarget(sheet.target, entry);
 
-            if (component == null)
+            if (serializedTarget == null)
             {
                 MarkEntryMissing(entry);
                 return false;
             }
 
-            SerializedObject serializedObject = new SerializedObject(component);
+            SerializedObject serializedObject = new SerializedObject(serializedTarget);
             SerializedProperty property = serializedObject.FindProperty(entry.propertyPath);
 
             if (property == null)
@@ -468,7 +438,7 @@ namespace GameplayBalanceSheets.Editor
                 return false;
             }
 
-            Undo.RecordObject(component, "Apply Balance Sheet Value");
+            Undo.RecordObject(serializedTarget, "Apply Balance Sheet Value");
 
             bool valueApplied = SetPropertyValueFromString(property, entry.testValue);
 
@@ -483,19 +453,19 @@ namespace GameplayBalanceSheets.Editor
 
             serializedObject.ApplyModifiedProperties();
 
-            if (PrefabUtility.IsPartOfPrefabInstance(component))
+            if (PrefabUtility.IsPartOfPrefabInstance(serializedTarget))
             {
-                PrefabUtility.RecordPrefabInstancePropertyModifications(component);
+                PrefabUtility.RecordPrefabInstancePropertyModifications(serializedTarget);
             }
 
             entry.currentValue = GetPropertyValueAsString(property);
             entry.testValue = entry.currentValue;
             entry.isMissing = false;
 
-            EditorUtility.SetDirty(component);
+            EditorUtility.SetDirty(serializedTarget);
             EditorUtility.SetDirty(sheet);
 
-            SaveTarget(sheet.targetRoot);
+            SaveTarget(sheet.target);
 
             return true;
         }
@@ -719,13 +689,13 @@ namespace GameplayBalanceSheets.Editor
 
         public static void PingTarget(GameplayBalanceSheetProfile sheet)
         {
-            if (sheet == null || sheet.targetRoot == null)
+            if (sheet == null || sheet.target == null)
             {
                 return;
             }
 
-            Selection.activeObject = sheet.targetRoot;
-            EditorGUIUtility.PingObject(sheet.targetRoot);
+            Selection.activeObject = sheet.target;
+            EditorGUIUtility.PingObject(sheet.target);
         }
 
         public static void SaveSheet(GameplayBalanceSheetProfile sheet)
@@ -767,6 +737,63 @@ namespace GameplayBalanceSheets.Editor
             if (!AssetDatabase.IsValidFolder(folderPath))
             {
                 AssetDatabase.CreateFolder(parent, folderName);
+            }
+        }
+
+        private static void AddSerializedProperties(
+            List<ScannedBalanceProperty> results,
+            UnityEngine.Object serializedTarget,
+            string componentPath,
+            int componentIndex
+        )
+        {
+            if (results == null || serializedTarget == null)
+            {
+                return;
+            }
+
+            Type targetType = serializedTarget.GetType();
+            string assemblyQualifiedTypeName = targetType.AssemblyQualifiedName;
+            SerializedObject serializedObject = new SerializedObject(serializedTarget);
+            SerializedProperty property = serializedObject.GetIterator();
+            bool enterChildren = true;
+
+            while (property.NextVisible(enterChildren))
+            {
+                enterChildren = true;
+
+                if (!ShouldIncludeProperty(property))
+                {
+                    continue;
+                }
+
+                string propertyPath = property.propertyPath;
+                ScannedBalanceProperty scannedProperty = new ScannedBalanceProperty
+                {
+                    selected = false,
+                    id = BuildEntryId(
+                        componentPath,
+                        assemblyQualifiedTypeName,
+                        componentIndex,
+                        propertyPath
+                    ),
+                    componentPath = componentPath,
+                    componentName = targetType.Name,
+                    componentTypeName = targetType.FullName,
+                    componentAssemblyQualifiedTypeName = assemblyQualifiedTypeName,
+                    componentIndex = componentIndex,
+                    propertyPath = propertyPath,
+                    propertyTypeName = property.propertyType.ToString(),
+                    displayName = BuildDisplayName(propertyPath),
+                    currentValue = GetPropertyValueAsString(property)
+                };
+
+                if (property.propertyType == SerializedPropertyType.Enum)
+                {
+                    scannedProperty.enumNames.AddRange(property.enumNames);
+                }
+
+                results.Add(scannedProperty);
             }
         }
 
@@ -927,6 +954,38 @@ namespace GameplayBalanceSheets.Editor
             }
         }
 
+        private static UnityEngine.Object FindSerializedTarget(
+            UnityEngine.Object target,
+            GameplayBalanceSheetEntry entry
+        )
+        {
+            if (target == null || entry == null)
+            {
+                return null;
+            }
+
+            if (target is ScriptableObject scriptableObject)
+            {
+                Type targetType = Type.GetType(entry.componentAssemblyQualifiedTypeName);
+                Type scriptableObjectType = scriptableObject.GetType();
+
+                bool typeMatches = targetType != null
+                    ? scriptableObjectType == targetType
+                    : scriptableObjectType.FullName == entry.componentTypeName;
+
+                return typeMatches && entry.componentIndex == 0
+                    ? scriptableObject
+                    : null;
+            }
+
+            if (!(target is GameObject targetRoot))
+            {
+                return null;
+            }
+
+            return FindComponent(targetRoot, entry);
+        }
+
         private static MonoBehaviour FindComponent(
             GameObject targetRoot,
             GameplayBalanceSheetEntry entry
@@ -1046,22 +1105,22 @@ namespace GameplayBalanceSheets.Editor
             return root.Find(path);
         }
 
-        private static void SaveTarget(GameObject targetRoot)
+        private static void SaveTarget(UnityEngine.Object target)
         {
-            if (targetRoot == null)
+            if (target == null)
             {
                 return;
             }
 
-            EditorUtility.SetDirty(targetRoot);
+            EditorUtility.SetDirty(target);
 
-            if (PrefabUtility.IsPartOfPrefabAsset(targetRoot))
+            if (target is GameObject targetRoot && PrefabUtility.IsPartOfPrefabAsset(targetRoot))
             {
                 PrefabUtility.SavePrefabAsset(targetRoot);
             }
-            else if (targetRoot.scene.IsValid())
+            else if (target is GameObject sceneObject && sceneObject.scene.IsValid())
             {
-                EditorSceneManager.MarkSceneDirty(targetRoot.scene);
+                EditorSceneManager.MarkSceneDirty(sceneObject.scene);
             }
 
             AssetDatabase.SaveAssets();
