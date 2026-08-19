@@ -387,14 +387,14 @@ namespace GameplayBalanceSheets.Editor
                 new Color(0.3f, 0.85f, 0.45f)
             );
 
-            string targetName = sheet.targetRoot != null
-                ? sheet.targetRoot.name
+            string targetName = sheet.target != null
+                ? sheet.target.name
                 : T("No target", "Aucune cible");
 
             DrawInlineInfo(
                 T("Target", "Cible"),
                 targetName,
-                sheet.targetRoot != null ? new Color(0.3f, 0.85f, 0.45f) : new Color(1f, 0.45f, 0.35f)
+                sheet.target != null ? new Color(0.3f, 0.85f, 0.45f) : new Color(1f, 0.45f, 0.35f)
             );
 
             if (showDetailedSidebar)
@@ -528,12 +528,36 @@ namespace GameplayBalanceSheets.Editor
                     selectedSheet.sheetTitle
                 );
 
-                selectedSheet.targetRoot = (GameObject)EditorGUILayout.ObjectField(
-                    T("Target Root", "Cible"),
-                    selectedSheet.targetRoot,
-                    typeof(GameObject),
+                UnityEngine.Object previousTarget = selectedSheet.target;
+                UnityEngine.Object selectedTarget = EditorGUILayout.ObjectField(
+                    T("Target", "Cible"),
+                    previousTarget,
+                    typeof(UnityEngine.Object),
                     true
                 );
+
+                selectedTarget = NormalizeTarget(selectedTarget);
+
+                if (IsSupportedTarget(selectedTarget))
+                {
+                    selectedSheet.target = selectedTarget;
+
+                    if (previousTarget != selectedSheet.target)
+                    {
+                        scannedProperties.Clear();
+                    }
+                }
+
+                if (!IsSupportedTarget(selectedTarget))
+                {
+                    EditorGUILayout.HelpBox(
+                        T(
+                            "The target must be a GameObject or a ScriptableObject asset.",
+                            "La cible doit être un GameObject ou un asset ScriptableObject."
+                        ),
+                        MessageType.Error
+                    );
+                }
             }
 
             if (selectedSheet.isDesignerVariant)
@@ -626,10 +650,10 @@ namespace GameplayBalanceSheets.Editor
                 true
             );
 
-            if (selectedSheet.targetRoot != null)
+            if (selectedSheet.target != null)
             {
                 DrawColoredLabel(
-                    T("Target", "Cible") + ": " + selectedSheet.targetRoot.name,
+                    T("Target", "Cible") + ": " + selectedSheet.target.name,
                     new Color(0.3f, 0.85f, 0.45f),
                     true
                 );
@@ -1057,12 +1081,12 @@ namespace GameplayBalanceSheets.Editor
 
             EditorGUILayout.LabelField(T("Scan Target", "Scanner la cible"), subtitleStyle);
 
-            if (selectedSheet.targetRoot == null)
+            if (!selectedSheet.HasSupportedTarget)
             {
                 DrawInfoBox(
                     T(
-                        "Assign a Target Root in the left configuration panel before scanning.",
-                        "Assigne une cible dans le panneau de configuration à gauche avant de scanner."
+                        "Assign a GameObject or ScriptableObject target in the left configuration panel before scanning.",
+                        "Assigne une cible GameObject ou ScriptableObject dans le panneau de configuration à gauche avant de scanner."
                     ),
                     MessageType.Warning
                 );
@@ -1534,8 +1558,8 @@ namespace GameplayBalanceSheets.Editor
 
             DrawLargeTutorialParagraph(
                 T(
-                    "Gameplay Balance Sheets works like tabletop RPG character sheets, but for gameplay balancing. A sheet describes gameplay values that can be applied to a Unity target: prefab, scene object, player, enemy, boss, camera or UI controller.",
-                    "Gameplay Balance Sheets fonctionne comme des fiches de personnage de JDR, mais pour l’équilibrage gameplay. Une fiche décrit des valeurs gameplay applicables à une cible Unity : prefab, objet de scène, joueur, ennemi, boss, caméra ou contrôleur UI."
+                    "Gameplay Balance Sheets works like tabletop RPG character sheets, but for gameplay balancing. A sheet describes gameplay values that can be applied to a GameObject hierarchy or a ScriptableObject asset.",
+                    "Gameplay Balance Sheets fonctionne comme des fiches de personnage de JDR, mais pour l’équilibrage gameplay. Une fiche décrit des valeurs gameplay applicables à une hiérarchie de GameObjects ou à un asset ScriptableObject."
                 )
             );
 
@@ -1551,8 +1575,8 @@ namespace GameplayBalanceSheets.Editor
             DrawTutorialBlock(
                 T("1. Developer creates the reference sheet", "1. Le développeur crée la fiche de référence"),
                 T(
-                    "Go to Developer. Create a reference sheet, assign a Target Root, create sections, scan the target, and add useful serialized fields.",
-                    "Va dans Configuration Dev. Crée une fiche de référence, assigne une cible, crée des sections, scanne la cible et ajoute les champs sérialisés utiles."
+                    "Go to Developer. Create a reference sheet, assign a GameObject or ScriptableObject target, create sections, scan the target, and add useful serialized fields.",
+                    "Va dans Configuration Dev. Crée une fiche de référence, assigne une cible GameObject ou ScriptableObject, crée des sections, scanne la cible et ajoute les champs sérialisés utiles."
                 )
             );
 
@@ -1627,7 +1651,7 @@ namespace GameplayBalanceSheets.Editor
             DrawTutorialBlock(
                 T("Create and configure", "Créer et configurer"),
                 T(
-                    "Create the reference sheet from Developer. Configure its title, target root and description in the lower-left panel.",
+                    "Create the reference sheet from Developer. Configure its title, target and description in the lower-left panel.",
                     "Crée la fiche de référence depuis Configuration Dev. Configure son titre, sa cible et sa description dans le panneau inférieur gauche."
                 )
             );
@@ -2200,12 +2224,12 @@ namespace GameplayBalanceSheets.Editor
 
         private void ScanTarget()
         {
-            if (selectedSheet == null || selectedSheet.targetRoot == null)
+            if (selectedSheet == null || !selectedSheet.HasSupportedTarget)
             {
                 return;
             }
 
-            scannedProperties = GameplayBalanceSheetUtility.ScanTarget(selectedSheet.targetRoot);
+            scannedProperties = GameplayBalanceSheetUtility.ScanTarget(selectedSheet.target);
         }
 
         private void AddSection(string sectionName)
@@ -2626,11 +2650,11 @@ namespace GameplayBalanceSheets.Editor
                     continue;
                 }
 
-                TargetGroup group = FindTargetGroup(groups, reference.targetRoot);
+                TargetGroup group = FindTargetGroup(groups, reference.target);
 
                 if (group == null)
                 {
-                    group = new TargetGroup(reference.targetRoot);
+                    group = new TargetGroup(reference.target);
                     groups.Add(group);
                 }
 
@@ -2647,7 +2671,7 @@ namespace GameplayBalanceSheets.Editor
             return groups;
         }
 
-        private TargetGroup FindTargetGroup(List<TargetGroup> groups, GameObject target)
+        private TargetGroup FindTargetGroup(List<TargetGroup> groups, UnityEngine.Object target)
         {
             for (int i = 0; i < groups.Count; i++)
             {
@@ -2704,7 +2728,7 @@ namespace GameplayBalanceSheets.Editor
             return SafeLower(sheet.DisplayTitle).Contains(search) ||
                    SafeLower(sheet.sheetDescription).Contains(search) ||
                    SafeLower(sheet.name).Contains(search) ||
-                   SafeLower(sheet.targetRoot != null ? sheet.targetRoot.name : string.Empty).Contains(search);
+                   SafeLower(sheet.target != null ? sheet.target.name : string.Empty).Contains(search);
         }
 
         private bool MatchesScanSearch(ScannedBalanceProperty property)
@@ -2742,6 +2766,18 @@ namespace GameplayBalanceSheets.Editor
             return !selectedSheet.lockSourceSheetForDesigner;
         }
 
+        private static UnityEngine.Object NormalizeTarget(UnityEngine.Object target)
+        {
+            return target is Component component
+                ? component.gameObject
+                : target;
+        }
+
+        private static bool IsSupportedTarget(UnityEngine.Object target)
+        {
+            return target == null || target is GameObject || target is ScriptableObject;
+        }
+
         private bool GetFoldout(Dictionary<string, bool> foldouts, string key, bool defaultValue)
         {
             if (!foldouts.ContainsKey(key))
@@ -2764,7 +2800,7 @@ namespace GameplayBalanceSheets.Editor
             }
         }
 
-        private string GetTargetKey(GameObject target, int index)
+        private string GetTargetKey(UnityEngine.Object target, int index)
         {
             return target != null
                 ? "target_" + target.GetInstanceID()
@@ -2962,10 +2998,10 @@ namespace GameplayBalanceSheets.Editor
 
         private sealed class TargetGroup
         {
-            public readonly GameObject target;
+            public readonly UnityEngine.Object target;
             public readonly List<GameplayBalanceSheetProfile> references = new List<GameplayBalanceSheetProfile>();
 
-            public TargetGroup(GameObject target)
+            public TargetGroup(UnityEngine.Object target)
             {
                 this.target = target;
             }

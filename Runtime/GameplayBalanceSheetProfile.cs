@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace GameplayBalanceSheets
 {
@@ -34,7 +35,16 @@ namespace GameplayBalanceSheets
         public string sheetDescription;
 
         [Header("Target")]
-        public GameObject targetRoot;
+        [FormerlySerializedAs("targetRoot")]
+        [Tooltip("GameObject root or ScriptableObject asset whose serialized gameplay values are managed by this sheet.")]
+        public UnityEngine.Object target;
+
+        [Obsolete("Use target instead. This compatibility property only exposes GameObject targets.")]
+        public GameObject targetRoot
+        {
+            get => target as GameObject;
+            set => target = value;
+        }
 
         [Header("Designer Variant")]
         public bool isDesignerVariant;
@@ -52,7 +62,9 @@ namespace GameplayBalanceSheets
             new GameplayBalanceSheetSection("General")
         };
 
-        public bool HasTarget => targetRoot != null;
+        public bool HasTarget => target != null;
+
+        public bool HasSupportedTarget => target is GameObject || target is ScriptableObject;
 
         public bool IsReferenceSheet => !isDesignerVariant;
 
@@ -210,7 +222,7 @@ namespace GameplayBalanceSheets
             {
                 sheetTitle = source.sheetTitle;
                 sheetDescription = source.sheetDescription;
-                targetRoot = source.targetRoot;
+                target = source.target;
                 lockSourceSheetForDesigner = source.lockSourceSheetForDesigner;
             }
 

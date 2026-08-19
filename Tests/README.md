@@ -1,10 +1,7 @@
 # Tests
 
-This folder is reserved for future package tests.
+Editor tests currently cover:
 
-Planned tests:
-
-- Runtime data validation tests
-- Editor workflow tests
-- Sheet duplication tests
-- Apply and refresh workflow tests
+- ScriptableObject serialized-field scanning
+- ScriptableObject apply and refresh round trips
+- GameObject/MonoBehaviour scan regression coverage

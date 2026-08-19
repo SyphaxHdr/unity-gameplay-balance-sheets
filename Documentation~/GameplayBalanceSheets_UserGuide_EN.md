@@ -16,6 +16,7 @@ In this tool, a balance sheet stores gameplay values that can be applied to a Un
 * a scene object
 * a UI controller
 * any GameObject with serialized MonoBehaviour fields
+* any ScriptableObject asset with supported serialized fields
 
 The goal is to let developers expose useful gameplay values once, then let game designers create variants and test different gameplay feelings without manually browsing technical components in the Inspector.
 
@@ -31,7 +32,7 @@ A **Reference Sheet** is the base sheet created by a developer.
 
 It defines:
 
-* the target object or prefab
+* the GameObject or ScriptableObject target
 * the gameplay sections
 * the exposed parameters
 * the baseline reference values
@@ -65,7 +66,7 @@ The base name stays linked to the reference sheet.
 
 ### Target
 
-A **Target** is the Unity object or prefab affected by a sheet.
+A **Target** is either a GameObject hierarchy (scene object or prefab) or a ScriptableObject asset affected by a sheet.
 
 Example:
 
@@ -100,7 +101,7 @@ Baseline: 5.2
 
 `Current` is the value currently written on the Unity target.
 
-It represents what the prefab or scene object is using right now.
+It represents what the GameObject or ScriptableObject target is using right now.
 
 Example:
 
@@ -200,7 +201,7 @@ Create Reference Sheet
 The developer then configures:
 
 * the reference title
-* the target root
+* the target
 * the description
 * the sections
 * the exposed gameplay fields
@@ -230,13 +231,13 @@ Sections can be reordered using drag and drop.
 
 ### Step 3 — Developer Scans the Target
 
-In the Developer page, assign a `Target Root`, then click:
+In the Developer page, assign a GameObject or ScriptableObject `Target`, then click:
 
 ```txt
 Scan Target
 ```
 
-The tool scans supported serialized fields from MonoBehaviours.
+For a GameObject target, the tool scans supported serialized fields from MonoBehaviours on the full hierarchy. For a ScriptableObject target, it scans the serialized fields directly on the asset.
 
 Supported types:
 
@@ -377,7 +378,7 @@ Reference sheets are locked by default.
 The Developer page is used to:
 
 * create reference sheets
-* configure target roots
+* configure GameObject or ScriptableObject targets
 * write sheet descriptions
 * create and reorder sections
 * scan targets
@@ -538,7 +539,7 @@ They should usually be committed to Git because they define the actual balancing
 ### Developer
 
 1. Create the reference sheet.
-2. Assign the target root.
+2. Assign the GameObject or ScriptableObject target.
 3. Create sections.
 4. Scan the target.
 5. Add useful serialized fields.

@@ -6,7 +6,7 @@ This folder contains the user documentation for the Gameplay Balance Sheets Unit
 
 ### English
 
-- [GameplayBalanceSheets_UserGuide.md](GameplayBalanceSheets_UserGuide.md)
+- [GameplayBalanceSheets_UserGuide_EN.md](GameplayBalanceSheets_UserGuide_EN.md)
 
 ### French
 

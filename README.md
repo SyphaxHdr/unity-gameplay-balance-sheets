@@ -15,7 +15,8 @@ Designers can then duplicate a reference sheet into variants, test different val
 * Create reference gameplay sheets.
 * Duplicate reference sheets into designer variants.
 * Organize values into sections.
-* Scan Unity targets and expose serialized gameplay fields.
+* Scan GameObject hierarchies and expose serialized MonoBehaviour fields.
+* Scan ScriptableObject assets and expose their serialized gameplay fields.
 * Edit test values without directly modifying the reference sheet.
 * Apply a full sheet or selected values to a target.
 * Validate a sheet as the new gameplay reference.
@@ -62,7 +63,8 @@ Les designers peuvent ensuite dupliquer une fiche de référence en variantes, t
 * Créer des fiches de référence gameplay.
 * Dupliquer une fiche de référence en variantes GD.
 * Organiser les valeurs par sections.
-* Scanner une cible Unity et exposer les champs gameplay sérialisés.
+* Scanner des hiérarchies de GameObjects et exposer les champs sérialisés des MonoBehaviours.
+* Scanner des assets ScriptableObject et exposer leurs champs gameplay sérialisés.
 * Modifier des valeurs de test sans modifier directement la fiche de référence.
 * Appliquer une fiche complète ou des valeurs sélectionnées à une cible.
 * Valider une fiche comme nouvelle référence gameplay.
@@ -99,7 +101,7 @@ Tools > Gameplay Balance Sheets
 More detailed guides are available in:
 
 ```txt
-Documentation~/GameplayBalanceSheets_UserGuide.md
+Documentation~/GameplayBalanceSheets_UserGuide_EN.md
 Documentation~/GameplayBalanceSheets_UserGuide_FR.md
 ```
 
