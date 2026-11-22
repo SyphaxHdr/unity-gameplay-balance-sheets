@@ -46,6 +46,9 @@ namespace GameplayBalanceSheets
             set => target = value;
         }
 
+        [Tooltip("Other GameObjects or ScriptableObject assets managed by this same sheet (e.g. the 3 attacks of a combo). The same field can be added once per target.")]
+        public List<UnityEngine.Object> additionalTargets = new List<UnityEngine.Object>();
+
         [Header("Designer Variant")]
         public bool isDesignerVariant;
 
@@ -65,6 +68,108 @@ namespace GameplayBalanceSheets
         public bool HasTarget => target != null;
 
         public bool HasSupportedTarget => target is GameObject || target is ScriptableObject;
+
+        public bool HasAdditionalTargets
+        {
+            get
+            {
+                if (additionalTargets == null)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < additionalTargets.Count; i++)
+                {
+                    if (additionalTargets[i] != null)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Main target first, then every additional target (no null, no duplicate, only GameObjects
+        /// and ScriptableObjects).
+        /// </summary>
+        public List<UnityEngine.Object> GetAllTargets()
+        {
+            List<UnityEngine.Object> targets = new List<UnityEngine.Object>();
+
+            if (IsSupportedTargetObject(target))
+            {
+                targets.Add(target);
+            }
+
+            if (additionalTargets == null)
+            {
+                return targets;
+            }
+
+            for (int i = 0; i < additionalTargets.Count; i++)
+            {
+                UnityEngine.Object additionalTarget = additionalTargets[i];
+
+                if (IsSupportedTargetObject(additionalTarget) && !targets.Contains(additionalTarget))
+                {
+                    targets.Add(additionalTarget);
+                }
+            }
+
+            return targets;
+        }
+
+        /// <summary>
+        /// Adds an extra target to this sheet. Returns false if it is null, unsupported, the main
+        /// target, or already listed.
+        /// </summary>
+        public bool AddAdditionalTarget(UnityEngine.Object newTarget)
+        {
+            if (!IsSupportedTargetObject(newTarget) || newTarget == target)
+            {
+                return false;
+            }
+
+            if (additionalTargets == null)
+            {
+                additionalTargets = new List<UnityEngine.Object>();
+            }
+
+            if (additionalTargets.Contains(newTarget))
+            {
+                return false;
+            }
+
+            additionalTargets.Add(newTarget);
+            return true;
+        }
+
+        /// <summary>
+        /// The object an entry reads and writes: its own target when it was added from an additional
+        /// target, otherwise the sheet's main target. Returns null when the entry's own target was
+        /// deleted (the entry must then be reported as missing, never applied to the main target).
+        /// </summary>
+        public UnityEngine.Object ResolveEntryTarget(GameplayBalanceSheetEntry entry)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            if (entry.hasTargetOverride)
+            {
+                return entry.targetOverride != null ? entry.targetOverride : null;
+            }
+
+            return target;
+        }
+
+        public static bool IsSupportedTargetObject(UnityEngine.Object candidate)
+        {
+            return candidate != null && (candidate is GameObject || candidate is ScriptableObject);
+        }
 
         public bool IsReferenceSheet => !isDesignerVariant;
 
@@ -223,6 +328,9 @@ namespace GameplayBalanceSheets
                 sheetTitle = source.sheetTitle;
                 sheetDescription = source.sheetDescription;
                 target = source.target;
+                additionalTargets = source.additionalTargets != null
+                    ? new List<UnityEngine.Object>(source.additionalTargets)
+                    : new List<UnityEngine.Object>();
                 lockSourceSheetForDesigner = source.lockSourceSheetForDesigner;
             }
 
@@ -270,6 +378,11 @@ namespace GameplayBalanceSheets
 
         public void EnsureSections()
         {
+            if (additionalTargets == null)
+            {
+                additionalTargets = new List<UnityEngine.Object>();
+            }
+
             if (sections == null)
             {
                 sections = new List<GameplayBalanceSheetSection>();
@@ -342,14 +455,54 @@ namespace GameplayBalanceSheets
         public string propertyTypeName;
         public List<string> enumNames = new List<string>();
 
+        [Tooltip("True when this entry belongs to one of the sheet's additional targets instead of its main target.")]
+        public bool hasTargetOverride;
+
+        [Tooltip("The additional target this entry reads and writes (only used when hasTargetOverride is true).")]
+        public UnityEngine.Object targetOverride;
+
         [Header("Values")]
         public string baselineValue;
         public string currentValue;
         public string testValue;
         public bool isMissing;
 
-        public string Id =>
-            $"{componentPath}|{componentAssemblyQualifiedTypeName}|{componentIndex}|{propertyPath}";
+        public string Id => BuildId(
+            componentPath,
+            componentAssemblyQualifiedTypeName,
+            componentIndex,
+            propertyPath,
+            hasTargetOverride,
+            targetOverride
+        );
+
+        /// <summary>
+        /// Identity of a field inside a sheet. Entries of the main target keep the historical format
+        /// (existing sheets stay valid); entries of an additional target also carry that target, so the
+        /// same field can be added once per target (attack 1, attack 2, attack 3...).
+        /// </summary>
+        public static string BuildId(
+            string componentPath,
+            string componentAssemblyQualifiedTypeName,
+            int componentIndex,
+            string propertyPath,
+            bool hasTargetOverride,
+            UnityEngine.Object targetOverride
+        )
+        {
+            string baseId = $"{componentPath}|{componentAssemblyQualifiedTypeName}|{componentIndex}|{propertyPath}";
+
+            if (!hasTargetOverride)
+            {
+                return baseId;
+            }
+
+            string targetKey = targetOverride != null
+                ? targetOverride.GetInstanceID().ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : "missing";
+
+            return $"{baseId}|@{targetKey}";
+        }
 
         public GameplayBalanceSheetEntryState State
         {

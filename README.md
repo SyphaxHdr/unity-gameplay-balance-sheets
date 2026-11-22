@@ -17,6 +17,7 @@ Designers can then duplicate a reference sheet into variants, test different val
 * Organize values into sections.
 * Scan GameObject hierarchies and expose serialized MonoBehaviour fields.
 * Scan ScriptableObject assets and expose their serialized gameplay fields.
+* Manage several targets in one sheet (e.g. the three attacks of a combo), with the same field once per target.
 * Edit test values without directly modifying the reference sheet.
 * Apply a full sheet or selected values to a target.
 * Validate a sheet as the new gameplay reference.
@@ -65,6 +66,7 @@ Les designers peuvent ensuite dupliquer une fiche de référence en variantes, t
 * Organiser les valeurs par sections.
 * Scanner des hiérarchies de GameObjects et exposer les champs sérialisés des MonoBehaviours.
 * Scanner des assets ScriptableObject et exposer leurs champs gameplay sérialisés.
+* Gérer plusieurs cibles dans une seule fiche (par ex. les trois attaques d’un combo), avec un même champ une fois par cible.
 * Modifier des valeurs de test sans modifier directement la fiche de référence.
 * Appliquer une fiche complète ou des valeurs sélectionnées à une cible.
 * Valider une fiche comme nouvelle référence gameplay.

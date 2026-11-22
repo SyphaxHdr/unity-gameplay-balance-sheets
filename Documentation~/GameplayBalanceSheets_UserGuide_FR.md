@@ -78,6 +78,26 @@ Variantes :
   - Test Heavy Combat
 ```
 
+### Plusieurs cibles dans une fiche
+
+Une fiche a toujours une **cible principale**, mais elle peut aussi gérer des **cibles supplémentaires**. C’est utile quand plusieurs objets du même type vont ensemble, par exemple les trois attaques d’un combo :
+
+```txt
+Fiche : Combo Cyre
+Cible principale : S_Attack_Cyre_1
+Cibles supplémentaires : S_Attack_Cyre_2, S_Attack_Cyre_3
+```
+
+Dans **Configuration Dev**, bloc **Cibles de la fiche** :
+
+1. Glisse chaque asset supplémentaire dans **Ajouter une cible**.
+2. Choisis la cible dans **Cible à scanner**, puis clique sur **Scanner la cible**.
+3. Coche les champs et ajoute-les à une section. Recommence pour chaque cible.
+
+Un même champ (par ex. les dégâts) peut être ajouté **une fois par cible**. Les paramètres d’une cible supplémentaire sont préfixés par son nom (`S_Attack_Cyre_2 > Damage`) et ne s’appliquent qu’à elle. Astuce : ajoute toutes les cibles **avant** d’ajouter les champs, pour que tous les noms soient préfixés.
+
+Si une cible supplémentaire est supprimée du projet, ses paramètres passent en **Introuvable** ; ils ne sont jamais appliqués à une autre cible. Retirer une cible de la fiche retire aussi ses paramètres.
+
 ---
 
 ## 3. Les colonnes de valeurs
