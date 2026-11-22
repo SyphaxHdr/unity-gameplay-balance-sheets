@@ -23,6 +23,15 @@ namespace GameplayBalanceSheets.Editor
         public string displayName;
         public string currentValue;
         public List<string> enumNames = new List<string>();
+
+        /// <summary>True when the scanned object is one of the sheet's additional targets.</summary>
+        public bool hasTargetOverride;
+
+        /// <summary>The scanned additional target (null for the sheet's main target).</summary>
+        public UnityEngine.Object targetOverride;
+
+        /// <summary>Name of the scanned object, for display.</summary>
+        public string targetName;
     }
 
     public static class GameplayBalanceSheetUtility
@@ -142,6 +151,9 @@ namespace GameplayBalanceSheets.Editor
             duplicate.sheetTitle = sourceSheet.sheetTitle;
             duplicate.sheetDescription = sourceSheet.sheetDescription;
             duplicate.target = sourceSheet.target;
+            duplicate.additionalTargets = sourceSheet.additionalTargets != null
+                ? new List<UnityEngine.Object>(sourceSheet.additionalTargets)
+                : new List<UnityEngine.Object>();
             duplicate.lockSourceSheetForDesigner = sourceSheet.lockSourceSheetForDesigner;
             duplicate.isDesignerVariant = true;
             duplicate.sourceSheet = sourceSheet;
@@ -295,6 +307,70 @@ namespace GameplayBalanceSheets.Editor
             return results;
         }
 
+        /// <summary>
+        /// Scans one of the sheet's targets (its main target or one of its additional targets). Fields
+        /// scanned on an additional target are tagged with that target, so they get their own identity
+        /// and can be added even if the same field was already added for another target.
+        /// </summary>
+        public static List<ScannedBalanceProperty> ScanTarget(
+            GameplayBalanceSheetProfile sheet,
+            UnityEngine.Object target
+        )
+        {
+            List<ScannedBalanceProperty> results = ScanTarget(target);
+
+            for (int i = 0; i < results.Count; i++)
+            {
+                results[i].targetName = target != null ? target.name : string.Empty;
+            }
+
+            if (sheet == null || target == null)
+            {
+                return results;
+            }
+
+            bool isAdditionalTarget = target != sheet.target;
+
+            for (int i = 0; i < results.Count; i++)
+            {
+                ScannedBalanceProperty property = results[i];
+
+                property.hasTargetOverride = isAdditionalTarget;
+                property.targetOverride = isAdditionalTarget ? target : null;
+                property.id = GameplayBalanceSheetEntry.BuildId(
+                    property.componentPath,
+                    property.componentAssemblyQualifiedTypeName,
+                    property.componentIndex,
+                    property.propertyPath,
+                    property.hasTargetOverride,
+                    property.targetOverride
+                );
+            }
+
+            return results;
+        }
+
+        /// <summary>Name of the object an entry reads and writes, for display.</summary>
+        public static string GetEntryTargetName(
+            GameplayBalanceSheetProfile sheet,
+            GameplayBalanceSheetEntry entry
+        )
+        {
+            if (sheet == null || entry == null)
+            {
+                return string.Empty;
+            }
+
+            UnityEngine.Object entryTarget = sheet.ResolveEntryTarget(entry);
+
+            if (entryTarget != null)
+            {
+                return entryTarget.name;
+            }
+
+            return entry.hasTargetOverride ? "Missing target" : string.Empty;
+        }
+
         public static int AddSelectedScannedPropertiesToSection(
             GameplayBalanceSheetProfile sheet,
             GameplayBalanceSheetSection section,
@@ -322,10 +398,19 @@ namespace GameplayBalanceSheets.Editor
                     continue;
                 }
 
+                string displayName = scannedProperty.displayName;
+
+                // With several targets, prefix the name with the target so designers can tell
+                // "Attack 1 > Damage" from "Attack 2 > Damage".
+                if (sheet.HasAdditionalTargets && !string.IsNullOrWhiteSpace(scannedProperty.targetName))
+                {
+                    displayName = $"{scannedProperty.targetName} > {displayName}";
+                }
+
                 GameplayBalanceSheetEntry entry = new GameplayBalanceSheetEntry
                 {
                     selected = false,
-                    displayName = scannedProperty.displayName,
+                    displayName = displayName,
                     description = string.Empty,
 
                     componentPath = scannedProperty.componentPath,
@@ -336,6 +421,8 @@ namespace GameplayBalanceSheets.Editor
                     propertyPath = scannedProperty.propertyPath,
                     propertyTypeName = scannedProperty.propertyTypeName,
                     enumNames = new List<string>(scannedProperty.enumNames),
+                    hasTargetOverride = scannedProperty.hasTargetOverride,
+                    targetOverride = scannedProperty.targetOverride,
 
                     baselineValue = scannedProperty.currentValue,
                     currentValue = scannedProperty.currentValue,
@@ -379,7 +466,8 @@ namespace GameplayBalanceSheets.Editor
                 return false;
             }
 
-            UnityEngine.Object serializedTarget = FindSerializedTarget(sheet.target, entry);
+            UnityEngine.Object entryTarget = sheet.ResolveEntryTarget(entry);
+            UnityEngine.Object serializedTarget = FindSerializedTarget(entryTarget, entry);
 
             if (serializedTarget == null)
             {
@@ -421,7 +509,8 @@ namespace GameplayBalanceSheets.Editor
                 return false;
             }
 
-            UnityEngine.Object serializedTarget = FindSerializedTarget(sheet.target, entry);
+            UnityEngine.Object entryTarget = sheet.ResolveEntryTarget(entry);
+            UnityEngine.Object serializedTarget = FindSerializedTarget(entryTarget, entry);
 
             if (serializedTarget == null)
             {
@@ -465,7 +554,7 @@ namespace GameplayBalanceSheets.Editor
             EditorUtility.SetDirty(serializedTarget);
             EditorUtility.SetDirty(sheet);
 
-            SaveTarget(sheet.target);
+            SaveTarget(entryTarget);
 
             return true;
         }
@@ -1190,6 +1279,8 @@ namespace GameplayBalanceSheets.Editor
                             propertyPath = sourceEntry.propertyPath,
                             propertyTypeName = sourceEntry.propertyTypeName,
                             enumNames = new List<string>(sourceEntry.enumNames),
+                            hasTargetOverride = sourceEntry.hasTargetOverride,
+                            targetOverride = sourceEntry.targetOverride,
 
                             baselineValue = sourceEntry.baselineValue,
                             currentValue = sourceEntry.currentValue,

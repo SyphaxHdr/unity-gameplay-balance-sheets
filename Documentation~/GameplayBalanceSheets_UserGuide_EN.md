@@ -78,6 +78,26 @@ Variants:
   - Test Heavy Combat
 ```
 
+### Several Targets in One Sheet
+
+A sheet always has a **main target**, but it can also manage **additional targets**. This is useful when several objects of the same type belong together, for example the three attacks of a combo:
+
+```txt
+Sheet: Cyre Combo
+Main target: S_Attack_Cyre_1
+Additional targets: S_Attack_Cyre_2, S_Attack_Cyre_3
+```
+
+In **Developer**, block **Sheet Targets**:
+
+1. Drop each additional asset into **Add a target**.
+2. Pick it in **Target to scan**, then click **Scan Target**.
+3. Tick the fields and add them to a section. Repeat for each target.
+
+The same field (e.g. damage) can be added **once per target**. Entries of an additional target are prefixed with its name (`S_Attack_Cyre_2 > Damage`) and only apply to that target. Tip: add all targets **before** adding fields, so every name gets prefixed.
+
+If an additional target is deleted from the project, its entries become **Missing**; they are never applied to another target. Removing a target from the sheet also removes its entries.
+
 ---
 
 ## 3. Value Columns

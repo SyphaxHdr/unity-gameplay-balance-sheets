@@ -2,6 +2,21 @@
 
 All notable changes to this package will be documented in this file.
 
+## [0.4.0]
+
+### Added
+- Multi-target sheets: a sheet can now manage additional targets besides its main target (for example the three attacks of a combo). Pick the target to scan in the Developer page, and the same field can be added once per target.
+- Entries added from an additional target remember that target, are prefixed with its name, and are applied to / refreshed from that target only.
+- Editor tests for multi-target sheets (identity per target, apply/refresh routing, deleted target reported as missing, designer variants keeping their targets).
+
+### Changed
+- Designer variants copy the additional targets of their reference sheet.
+- The "Source" line of an entry shows its target when the sheet has several targets.
+
+### Notes
+- Existing sheets are unchanged: entries of the main target keep the same identity as before.
+- If an additional target is deleted, its entries are reported as Missing and are never applied to the main target.
+
 ## [0.3.0]
 
 ### Added

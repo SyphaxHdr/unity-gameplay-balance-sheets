@@ -58,6 +58,7 @@ namespace GameplayBalanceSheets.Editor
         private string defaultSheetsFolder = GameplayBalanceSheetUtility.DefaultSheetsFolder;
 
         private int selectedSectionIndex;
+        private int scanTargetIndex;
 
         private bool showTechnicalInfo;
         private bool showHelpBoxes = true;
@@ -991,7 +992,7 @@ namespace GameplayBalanceSheets.Editor
             if (showTechnicalInfo)
             {
                 EditorGUILayout.LabelField(
-                    "Source: " + entry.componentName + " / " + entry.propertyPath,
+                    GetEntrySourceLabel(entry),
                     EditorStyles.miniLabel
                 );
             }
@@ -1095,6 +1096,8 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
+            DrawSheetTargetsTools();
+
             EditorGUILayout.BeginHorizontal();
 
             if (DrawColoredButton(
@@ -1164,6 +1167,214 @@ namespace GameplayBalanceSheets.Editor
             EditorGUILayout.EndVertical();
         }
 
+        /// <summary>
+        /// Lists every target of the sheet (main target + additional targets), lets the developer add or
+        /// remove additional targets, and choose which one the next scan reads. Several targets let one
+        /// sheet hold the same field for several objects (e.g. the 3 attacks of a combo).
+        /// </summary>
+        private void DrawSheetTargetsTools()
+        {
+            List<UnityEngine.Object> targets = selectedSheet.GetAllTargets();
+
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.LabelField(T("Sheet Targets", "Cibles de la fiche"), EditorStyles.boldLabel);
+
+            DrawInfoBox(
+                T(
+                    "A sheet can manage several targets (e.g. Attack 1, Attack 2 and Attack 3 of a combo). Add them here, pick the one to scan, then add its fields. The same field can be added once per target.",
+                    "Une fiche peut gérer plusieurs cibles (par ex. Attaque 1, Attaque 2 et Attaque 3 d'un combo). Ajoute-les ici, choisis celle à scanner, puis ajoute ses champs. Un même champ peut être ajouté une fois par cible."
+                ),
+                MessageType.Info
+            );
+
+            bool canEditTargets = !selectedSheet.isDesignerVariant;
+
+            for (int i = 0; i < targets.Count; i++)
+            {
+                UnityEngine.Object sheetTarget = targets[i];
+                bool isMainTarget = sheetTarget == selectedSheet.target;
+
+                EditorGUILayout.BeginHorizontal();
+
+                EditorGUILayout.LabelField(
+                    isMainTarget ? T("Main target", "Cible principale") : T("Additional target", "Cible supplémentaire"),
+                    GUILayout.Width(150f)
+                );
+
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.ObjectField(sheetTarget, typeof(UnityEngine.Object), true);
+                }
+
+                if (!isMainTarget && canEditTargets)
+                {
+                    if (DrawColoredButton(
+                            T("Remove", "Retirer"),
+                            new Color(1f, 0.45f, 0.35f),
+                            GUILayout.Width(95f)))
+                    {
+                        RemoveAdditionalTarget(sheetTarget);
+                        EditorGUILayout.EndHorizontal();
+                        GUIUtility.ExitGUI();
+                    }
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (canEditTargets)
+            {
+                UnityEngine.Object newTarget = EditorGUILayout.ObjectField(
+                    T("Add a target", "Ajouter une cible"),
+                    null,
+                    typeof(UnityEngine.Object),
+                    true
+                );
+
+                newTarget = NormalizeTarget(newTarget);
+
+                if (newTarget != null)
+                {
+                    if (selectedSheet.AddAdditionalTarget(newTarget))
+                    {
+                        EditorUtility.SetDirty(selectedSheet);
+                        AssetDatabase.SaveAssets();
+                        scanTargetIndex = selectedSheet.GetAllTargets().IndexOf(newTarget);
+                        scannedProperties.Clear();
+                    }
+                    else if (!IsSupportedTarget(newTarget))
+                    {
+                        EditorUtility.DisplayDialog(
+                            T("Unsupported target", "Cible non prise en charge"),
+                            T(
+                                "The target must be a GameObject or a ScriptableObject asset.",
+                                "La cible doit être un GameObject ou un asset ScriptableObject."
+                            ),
+                            "OK"
+                        );
+                    }
+                }
+            }
+
+            targets = selectedSheet.GetAllTargets();
+
+            if (targets.Count > 1)
+            {
+                string[] targetNames = new string[targets.Count];
+
+                for (int i = 0; i < targets.Count; i++)
+                {
+                    targetNames[i] = targets[i] != null ? targets[i].name : "?";
+                }
+
+                scanTargetIndex = Mathf.Clamp(scanTargetIndex, 0, targets.Count - 1);
+
+                int newScanTargetIndex = EditorGUILayout.Popup(
+                    T("Target to scan", "Cible à scanner"),
+                    scanTargetIndex,
+                    targetNames
+                );
+
+                if (newScanTargetIndex != scanTargetIndex)
+                {
+                    scanTargetIndex = newScanTargetIndex;
+                    scannedProperties.Clear();
+                }
+            }
+            else
+            {
+                scanTargetIndex = 0;
+            }
+
+            EditorGUILayout.Space(6f);
+        }
+
+        private UnityEngine.Object GetSelectedScanTarget()
+        {
+            if (selectedSheet == null)
+            {
+                return null;
+            }
+
+            List<UnityEngine.Object> targets = selectedSheet.GetAllTargets();
+
+            if (targets.Count == 0)
+            {
+                return null;
+            }
+
+            scanTargetIndex = Mathf.Clamp(scanTargetIndex, 0, targets.Count - 1);
+            return targets[scanTargetIndex];
+        }
+
+        private void RemoveAdditionalTarget(UnityEngine.Object targetToRemove)
+        {
+            if (selectedSheet == null || selectedSheet.additionalTargets == null || targetToRemove == null)
+            {
+                return;
+            }
+
+            int entryCount = 0;
+
+            selectedSheet.ForEachEntry(entry =>
+            {
+                if (entry.hasTargetOverride && entry.targetOverride == targetToRemove)
+                {
+                    entryCount++;
+                }
+            });
+
+            if (entryCount > 0 &&
+                !EditorUtility.DisplayDialog(
+                    T("Remove target", "Retirer la cible"),
+                    T(
+                        $"{entryCount} field(s) of this sheet use '{targetToRemove.name}'. They will be removed too.",
+                        $"{entryCount} champ(s) de cette fiche utilisent '{targetToRemove.name}'. Ils seront supprimés aussi."
+                    ),
+                    T("Remove", "Retirer"),
+                    T("Cancel", "Annuler")))
+            {
+                return;
+            }
+
+            selectedSheet.additionalTargets.Remove(targetToRemove);
+
+            if (selectedSheet.sections != null)
+            {
+                for (int sectionIndex = 0; sectionIndex < selectedSheet.sections.Count; sectionIndex++)
+                {
+                    GameplayBalanceSheetSection section = selectedSheet.sections[sectionIndex];
+
+                    if (section?.entries == null)
+                    {
+                        continue;
+                    }
+
+                    section.entries.RemoveAll(entry =>
+                        entry != null && entry.hasTargetOverride && entry.targetOverride == targetToRemove
+                    );
+                }
+            }
+
+            scanTargetIndex = 0;
+            scannedProperties.Clear();
+
+            EditorUtility.SetDirty(selectedSheet);
+            AssetDatabase.SaveAssets();
+        }
+
+        private string GetEntrySourceLabel(GameplayBalanceSheetEntry entry)
+        {
+            string source = entry.componentName + " / " + entry.propertyPath;
+
+            if (selectedSheet != null && (selectedSheet.HasAdditionalTargets || entry.hasTargetOverride))
+            {
+                source = GameplayBalanceSheetUtility.GetEntryTargetName(selectedSheet, entry) + " > " + source;
+            }
+
+            return "Source: " + source;
+        }
+
         private void DrawScannedProperties()
         {
             if (scannedProperties == null || scannedProperties.Count == 0)
@@ -1200,7 +1411,9 @@ namespace GameplayBalanceSheets.Editor
                     continue;
                 }
 
-                string group = $"{property.componentPath} / {property.componentName}";
+                string group = selectedSheet.HasAdditionalTargets
+                    ? $"{property.targetName} > {property.componentPath} / {property.componentName}"
+                    : $"{property.componentPath} / {property.componentName}";
 
                 if (group != currentGroup)
                 {
@@ -1313,7 +1526,7 @@ namespace GameplayBalanceSheets.Editor
 
             EditorGUILayout.EndHorizontal();
 
-            EditorGUILayout.LabelField("Source: " + entry.componentName + " / " + entry.propertyPath, EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(GetEntrySourceLabel(entry), EditorStyles.miniLabel);
             EditorGUILayout.LabelField("Type: " + entry.propertyTypeName, EditorStyles.miniLabel);
 
             EditorGUILayout.LabelField(T("Description", "Description"));
@@ -2125,6 +2338,7 @@ namespace GameplayBalanceSheets.Editor
         {
             selectedSheet = sheet;
             selectedSectionIndex = 0;
+            scanTargetIndex = 0;
             scannedProperties.Clear();
             ResetSectionReorderList();
             GUI.FocusControl(null);
@@ -2229,7 +2443,10 @@ namespace GameplayBalanceSheets.Editor
                 return;
             }
 
-            scannedProperties = GameplayBalanceSheetUtility.ScanTarget(selectedSheet.target);
+            scannedProperties = GameplayBalanceSheetUtility.ScanTarget(
+                selectedSheet,
+                GetSelectedScanTarget()
+            );
         }
 
         private void AddSection(string sectionName)

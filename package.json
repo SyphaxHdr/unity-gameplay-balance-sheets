@@ -1,6 +1,6 @@
 {
   "name": "com.gameplaybalancesheets.unity",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "displayName": "Gameplay Balance Sheets",
   "description": "A generic Unity Editor tool for creating RPG-style gameplay balance sheets, designer variants, and validation workflows for gameplay tuning.",
   "unity": "2022.3",
